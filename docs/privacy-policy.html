@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Browser Activity Tracker</title>
+<style>
+  :root {
+    color-scheme: light dark;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+    line-height: 1.6;
+    color: #1f2937;
+    background: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e5e7eb; background: #111827; }
+    a { color: #7dd3fc; }
+    .updated { color: #9ca3af; }
+    code { background: #1f2937; }
+    hr { border-color: #374151; }
+  }
+  h1 { font-size: 28px; margin-bottom: 4px; }
+  h2 { font-size: 19px; margin-top: 40px; }
+  .updated { color: #6b7280; font-size: 14px; margin-bottom: 32px; }
+  code {
+    background: #f3f4f6;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.92em;
+  }
+  ul { padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  hr { margin: 40px 0; border: none; border-top: 1px solid #e5e7eb; }
+  .highlight {
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 24px 0;
+  }
+  @media (prefers-color-scheme: dark) {
+    .highlight { background: #052e21; border-color: #065f46; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Privacy Policy</h1>
+<p class="updated">Browser Activity Tracker · Last updated 2026-07-08</p>
+
+<div class="highlight">
+  <strong>In one sentence:</strong> Browser Activity Tracker stores everything
+  it tracks locally in your browser and never sends any data anywhere. There
+  are no servers, no accounts, and no analytics.
+</div>
+
+<h2>What the extension does</h2>
+<p>
+  Browser Activity Tracker is a Chrome extension that watches which browser
+  tab is currently active and records how much time is spent on it, so that
+  time can be attributed to a project you define. It runs entirely on your
+  device.
+</p>
+
+<h2>Data we collect</h2>
+<p>The extension records the following, and only the following, locally:</p>
+<ul>
+  <li>The URL, page title, and domain of the tab you are actively viewing</li>
+  <li>Timestamps for when tracking starts, pauses, resumes, and ends</li>
+  <li>Project, tag, billable, and rule data you create yourself inside the extension</li>
+</ul>
+<p>
+  This data is used solely to calculate and display how your time was spent,
+  inside the extension's own popup, options page, and dashboard.
+</p>
+
+<h2>Where your data is stored</h2>
+<p>
+  All data is stored locally using your browser's built-in storage
+  (<code>chrome.storage.local</code> and IndexedDB). None of it is stored on
+  any server operated by us or anyone else, because no such server exists for
+  this extension.
+</p>
+
+<h2>Data sharing and transmission</h2>
+<p>
+  The extension makes <strong>zero network requests</strong>. It does not
+  contact any external server, API, or analytics provider, and it has no
+  network host permissions in its manifest. Your browsing and time-tracking
+  data never leaves your device unless you personally choose to export it
+  (see below).
+</p>
+
+<h2>Exporting and moving your data</h2>
+<p>
+  The extension includes a manual Backup &amp; Restore feature and CSV/JSON
+  export. These create a file on your computer, entirely under your control.
+  Nothing is uploaded automatically — moving data between devices or into a
+  spreadsheet or invoicing tool is something you initiate and control every
+  time.
+</p>
+
+<h2>Permissions this extension requests, and why</h2>
+<ul>
+  <li><code>tabs</code> — to read the active tab's URL and title, which is how the extension knows what you're working on. It does not inject scripts into or read the content of any page.</li>
+  <li><code>idle</code> — to detect when you've stepped away from the keyboard, so idle time isn't counted as active work.</li>
+  <li><code>storage</code> — to save your sessions, projects, rules, tags, and settings locally.</li>
+  <li><code>alarms</code> — to periodically checkpoint an in-progress session (so it survives the browser's background process being restarted) and to end a timed manual override at the exact moment it expires.</li>
+</ul>
+
+<h2>Data deletion</h2>
+<p>
+  You can delete all tracked data at any time from the extension's dashboard
+  ("Delete All"), or remove everything at once by uninstalling the extension,
+  which clears its local storage per standard Chrome behavior.
+</p>
+
+<h2>Children's privacy</h2>
+<p>
+  This extension is a productivity tool intended for general audiences and
+  does not knowingly collect data from children, in part because it does not
+  collect or transmit data of any kind to us.
+</p>
+
+<h2>Changes to this policy</h2>
+<p>
+  If this policy changes, the "Last updated" date above will change and the
+  revised policy will be published at this same URL.
+</p>
+
+<h2>Contact</h2>
+<p>
+  Questions about this policy or the extension can be sent to
+  <a href="mailto:damian@buildme.lk">damian@buildme.lk</a>.
+</p>
+
+<hr>
+<p class="updated">
+  Browser Activity Tracker is open source. Source code:
+  <a href="https://github.com/damian-debug/browser-activity-tracker">github.com/damian-debug/browser-activity-tracker</a>
+</p>
+
+</body>
+</html>
