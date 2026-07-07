@@ -1,4 +1,5 @@
 node_modules/
 dist/
+store-assets/*.zip
 *.log
 .DS_Store
