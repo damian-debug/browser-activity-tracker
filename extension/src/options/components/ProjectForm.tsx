@@ -34,7 +34,7 @@ export function ProjectForm({ initial, onSave, onCancel }: Props) {
           <label>Project name</label>
           <input
             type="text"
-            placeholder="e.g. RoleKick"
+            placeholder="e.g. Acme Corp"
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             autoFocus

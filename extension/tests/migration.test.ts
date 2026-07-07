@@ -8,11 +8,11 @@ const DB_NAME = "BrowserActivityTracker";
 const V1_SESSIONS = [
   {
     id: "s1",
-    url: "https://bubble.io/page?id=meltx",
+    url: "https://bubble.io/page?id=sampleapp",
     domain: "bubble.io",
-    title: "meltx | Bubble Editor",
+    title: "sampleapp | Bubble Editor",
     service: "bubble",
-    projectId: "meltx",
+    projectId: "sampleapp",
     projectName: null,
     startTime: 1_000_000,
     endTime: 1_060_000,
@@ -73,7 +73,7 @@ describe("V1 → V2 migration", () => {
     const [bubble, figma, plain] = sessions;
 
     // Parser output moved
-    expect(bubble.detectedEntityId).toBe("meltx");
+    expect(bubble.detectedEntityId).toBe("sampleapp");
     expect(bubble.detectedEntityName).toBeNull();
     expect(figma.detectedEntityId).toBe("abc123");
     expect(figma.detectedEntityName).toBe("My File");

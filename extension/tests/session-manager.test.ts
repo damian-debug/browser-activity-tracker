@@ -124,7 +124,7 @@ describe("active time accrual", () => {
     const sm = await loadSessionManager();
     await sm.startSession(BUBBLE_URL, "Editor", {
       projectId: "proj-1",
-      projectName: "RoleKick",
+      projectName: "Acme Corp",
       assignmentSource: "manual_popup",
       assignmentConfidence: 100,
       tagIds: ["tag-1"],
@@ -135,7 +135,7 @@ describe("active time accrual", () => {
 
     const s = saved()[0];
     expect(s.projectId).toBe("proj-1");
-    expect(s.projectName).toBe("RoleKick");
+    expect(s.projectName).toBe("Acme Corp");
     expect(s.assignmentSource).toBe("manual_popup");
     expect(s.assignmentConfidence).toBe(100);
     expect(s.tagIds).toEqual(["tag-1"]);

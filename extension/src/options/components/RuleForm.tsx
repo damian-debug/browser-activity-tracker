@@ -94,7 +94,7 @@ export function RuleForm({ project, tags, initial, onSave, onCancel }: Props) {
         <label>Rule name</label>
         <input
           type="text"
-          placeholder='e.g. "RoleKick Bubble editor"'
+          placeholder='e.g. "Acme Corp Bubble editor"'
           value={draft.name}
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
         />

@@ -3,7 +3,7 @@ import { csvEscape, sessionsToCsv } from "../src/shared/csv";
 import type { Project, Session, Tag } from "../src/shared/types";
 
 const project: Project = {
-  id: "p1", name: "RoleKick", clientName: "Acme, Inc.", defaultBillable: true,
+  id: "p1", name: "Acme Corp", clientName: "Acme, Inc.", defaultBillable: true,
   archived: false, createdAt: 0, updatedAt: 0,
 };
 
@@ -19,7 +19,7 @@ function session(overrides: Partial<Session> = {}): Session {
     domain: "example.com",
     title: "Plain title",
     service: null, detectedEntityId: null, detectedEntityName: null,
-    projectId: "p1", projectName: "RoleKick",
+    projectId: "p1", projectName: "Acme Corp",
     assignmentSource: "auto_rule", assignmentConfidence: 95,
     tagIds: ["t1", "t2"], billable: true, reviewed: true,
     startTime: Date.UTC(2026, 0, 2, 10, 0, 0),
@@ -45,7 +45,7 @@ describe("sessionsToCsv", () => {
     const lines = csv.trim().split("\r\n");
     expect(lines).toHaveLength(2);
     expect(lines[0].startsWith("Date,Start,End,Duration (seconds),Project,Client")).toBe(true);
-    expect(lines[1]).toContain("RoleKick");
+    expect(lines[1]).toContain("Acme Corp");
     expect(lines[1]).toContain('"Acme, Inc."');
     expect(lines[1]).toContain("Development, QA");
     expect(lines[1]).toContain("3600");

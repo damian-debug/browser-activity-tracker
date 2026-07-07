@@ -8,9 +8,9 @@ const DB_NAME = "BrowserActivityTracker";
 function session(id: string, overrides: Partial<Session> = {}): Session {
   return {
     id,
-    url: "https://app.justvideowalls.com/dashboard",
-    domain: "app.justvideowalls.com",
-    title: "Just Video Walls",
+    url: "https://app.sample-app.com/dashboard",
+    domain: "app.sample-app.com",
+    title: "Sample App",
     service: null, detectedEntityId: null, detectedEntityName: null,
     projectId: null, projectName: null,
     assignmentSource: "unassigned", assignmentConfidence: 0,
@@ -23,8 +23,8 @@ function session(id: string, overrides: Partial<Session> = {}): Session {
 
 function domainRule(overrides: Partial<ProjectRule> = {}): ProjectRule {
   return {
-    id: "rule-1", projectId: "p1", name: "JVW: domain",
-    type: "domain_equals", value: "app.justvideowalls.com",
+    id: "rule-1", projectId: "p1", name: "ACME: domain",
+    type: "domain_equals", value: "app.sample-app.com",
     priority: 0, enabled: true, createdAt: 0, updatedAt: 0,
     ...overrides,
   };
@@ -38,7 +38,7 @@ beforeEach(async () => {
 async function setup(sessions: Session[]) {
   const { db } = await import("../src/storage/db");
   await db.projects.put({
-    id: "p1", name: "JVW", clientName: "Just Video Walls",
+    id: "p1", name: "ACME", clientName: "Sample App",
     defaultBillable: true, archived: false, createdAt: 0, updatedAt: 0,
   });
   await db.sessions.bulkPut(sessions);
@@ -52,7 +52,7 @@ describe("applyRuleToExistingSessions", () => {
   it("assigns matching unassigned+unreviewed sessions and marks them reviewed", async () => {
     const { db, applyRuleToExistingSessions } = await setup([
       session("match-1"),
-      session("match-2", { url: "https://app.justvideowalls.com/settings" }),
+      session("match-2", { url: "https://app.sample-app.com/settings" }),
       session("other-domain", { url: "https://example.com/", domain: "example.com" }),
     ]);
 
@@ -61,7 +61,7 @@ describe("applyRuleToExistingSessions", () => {
 
     const updated = await db.sessions.get("match-1");
     expect(updated!.projectId).toBe("p1");
-    expect(updated!.projectName).toBe("JVW");
+    expect(updated!.projectName).toBe("ACME");
     expect(updated!.assignmentSource).toBe("auto_rule");
     expect(updated!.matchedRuleId).toBe("rule-1");
     expect(updated!.reviewed).toBe(true);

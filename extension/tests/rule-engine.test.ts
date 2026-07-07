@@ -22,11 +22,11 @@ function rule(partial: Partial<ProjectRule> & Pick<ProjectRule, "type" | "value"
 
 function input(partial: Partial<RuleEngineInput> = {}): RuleEngineInput {
   return {
-    url: "https://bubble.io/page?id=meltx&tab=Design",
+    url: "https://bubble.io/page?id=sampleapp&tab=Design",
     domain: "bubble.io",
-    title: "meltx | Bubble Editor",
+    title: "sampleapp | Bubble Editor",
     service: "bubble",
-    detectedEntityId: "meltx",
+    detectedEntityId: "sampleapp",
     detectedEntityName: null,
     ...partial,
   };
@@ -40,7 +40,7 @@ describe("rule matchers", () => {
   });
 
   it("url_contains matches substrings", () => {
-    const r = rule({ type: "url_contains", value: "bubble.io/page?id=meltx", projectId: "p1" });
+    const r = rule({ type: "url_contains", value: "bubble.io/page?id=sampleapp", projectId: "p1" });
     expect(runRuleEngine(input(), [r]).projectId).toBe("p1");
     expect(runRuleEngine(input(), [r]).assignmentConfidence).toBe(CONFIDENCE.URL_CONTAINS);
   });
@@ -54,20 +54,20 @@ describe("rule matchers", () => {
   });
 
   it("path_contains matches against the pathname only", () => {
-    const r = rule({ type: "path_contains", value: "/project/jvw", projectId: "p1" });
+    const r = rule({ type: "path_contains", value: "/project/acme", projectId: "p1" });
     expect(
-      runRuleEngine(input({ url: "https://app.example.com/project/jvw/board" }), [r]).projectId
+      runRuleEngine(input({ url: "https://app.example.com/project/acme/board" }), [r]).projectId
     ).toBe("p1");
     // Value in query string must NOT match a path rule
     expect(
-      runRuleEngine(input({ url: "https://app.example.com/?path=/project/jvw" }), [r]).projectId
+      runRuleEngine(input({ url: "https://app.example.com/?path=/project/acme" }), [r]).projectId
     ).toBeNull();
   });
 
   it("query_param_equals matches the exact parameter value", () => {
     const r = rule({
       type: "query_param_equals",
-      value: "meltx",
+      value: "sampleapp",
       queryParamName: "id",
       projectId: "p1",
     });
@@ -77,12 +77,12 @@ describe("rule matchers", () => {
   });
 
   it("title_contains matches case-insensitively", () => {
-    const r = rule({ type: "title_contains", value: "MELTX", projectId: "p1" });
+    const r = rule({ type: "title_contains", value: "SAMPLEAPP", projectId: "p1" });
     expect(runRuleEngine(input(), [r]).projectId).toBe("p1");
   });
 
   it("regex matches against the URL and tolerates invalid patterns", () => {
-    const good = rule({ type: "regex", value: "bubble\\.io\\/page\\?id=meltx", projectId: "p1" });
+    const good = rule({ type: "regex", value: "bubble\\.io\\/page\\?id=sampleapp", projectId: "p1" });
     expect(runRuleEngine(input(), [good]).projectId).toBe("p1");
 
     const invalid = rule({ type: "regex", value: "([unclosed", projectId: "p2" });
@@ -100,7 +100,7 @@ describe("rule selection", () => {
   it("higher priority wins regardless of specificity", () => {
     const broad = rule({ type: "domain_equals", value: "bubble.io", projectId: "broad", priority: 10 });
     const narrow = rule({
-      type: "query_param_equals", value: "meltx", queryParamName: "id", projectId: "narrow", priority: 1,
+      type: "query_param_equals", value: "sampleapp", queryParamName: "id", projectId: "narrow", priority: 1,
     });
     expect(runRuleEngine(input(), [broad, narrow]).projectId).toBe("broad");
   });
@@ -108,7 +108,7 @@ describe("rule selection", () => {
   it("equal priority: more specific rule type wins", () => {
     const broad = rule({ type: "domain_equals", value: "bubble.io", projectId: "broad", priority: 0 });
     const narrow = rule({
-      type: "query_param_equals", value: "meltx", queryParamName: "id", projectId: "narrow", priority: 0,
+      type: "query_param_equals", value: "sampleapp", queryParamName: "id", projectId: "narrow", priority: 0,
     });
     const result = runRuleEngine(input(), [broad, narrow]);
     expect(result.projectId).toBe("narrow");

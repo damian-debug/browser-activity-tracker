@@ -6,11 +6,11 @@ const HOUR = 3600_000;
 
 const original: Session = {
   id: "orig",
-  url: "https://bubble.io/page?id=meltx",
+  url: "https://bubble.io/page?id=sampleapp",
   domain: "bubble.io",
-  title: "meltx | Bubble Editor",
+  title: "sampleapp | Bubble Editor",
   service: "bubble",
-  detectedEntityId: "meltx",
+  detectedEntityId: "sampleapp",
   detectedEntityName: null,
   projectId: null,
   projectName: null,

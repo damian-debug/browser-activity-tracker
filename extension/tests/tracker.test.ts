@@ -231,7 +231,7 @@ describe("event serialization (S2)", () => {
 describe("timed override expiry (S1)", () => {
   const SWITCH_PAYLOAD = {
     projectId: "p1",
-    projectName: "RoleKick",
+    projectName: "Acme Corp",
     tagIds: [],
     billable: true,
     scope: "global",

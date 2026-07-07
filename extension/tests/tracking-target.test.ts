@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { isSameTarget } from "../src/shared/tracking-target";
 
-const bubbleMeltx = {
+const bubbleSampleApp = {
   service: "bubble",
-  detectedEntityId: "meltx",
-  url: "https://bubble.io/page?id=meltx&tab=Design",
+  detectedEntityId: "sampleapp",
+  url: "https://bubble.io/page?id=sampleapp&tab=Design",
 };
 
 const figmaFile = {
@@ -23,12 +23,12 @@ describe("isSameTarget", () => {
   it("keeps the session when navigating within the same Bubble app", () => {
     // Bubble rewrites the URL as you click around the editor — same app, so
     // continuity must hold.
-    expect(isSameTarget(bubbleMeltx, "https://bubble.io/page?id=meltx&tab=Settings")).toBe(true);
-    expect(isSameTarget(bubbleMeltx, "https://bubble.io/page?id=meltx&tab=Workflow&x=1")).toBe(true);
+    expect(isSameTarget(bubbleSampleApp, "https://bubble.io/page?id=sampleapp&tab=Settings")).toBe(true);
+    expect(isSameTarget(bubbleSampleApp, "https://bubble.io/page?id=sampleapp&tab=Workflow&x=1")).toBe(true);
   });
 
   it("starts a new session when switching to a different Bubble app", () => {
-    expect(isSameTarget(bubbleMeltx, "https://bubble.io/page?id=otherapp&tab=Design")).toBe(false);
+    expect(isSameTarget(bubbleSampleApp, "https://bubble.io/page?id=otherapp&tab=Design")).toBe(false);
   });
 
   it("keeps the session across navigation within the same Figma file", () => {
@@ -50,10 +50,10 @@ describe("isSameTarget", () => {
 
   it("starts a new session when leaving a project for a plain page on the same domain", () => {
     // From the Bubble app editor to the Bubble marketing/settings site root.
-    expect(isSameTarget(bubbleMeltx, "https://bubble.io/home")).toBe(false);
+    expect(isSameTarget(bubbleSampleApp, "https://bubble.io/home")).toBe(false);
   });
 
   it("starts a new session when a project page changes to a different service", () => {
-    expect(isSameTarget(bubbleMeltx, "https://www.figma.com/design/abc123/My-File")).toBe(false);
+    expect(isSameTarget(bubbleSampleApp, "https://www.figma.com/design/abc123/My-File")).toBe(false);
   });
 });
