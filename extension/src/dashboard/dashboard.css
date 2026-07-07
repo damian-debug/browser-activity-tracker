@@ -46,7 +46,7 @@ body {
 }
 
 /* Buttons */
-.btn-outline, .btn-danger-outline, .btn-sync {
+.btn-outline, .btn-danger-outline {
   padding: 6px 14px;
   border-radius: 6px;
   font-size: 12px;
@@ -69,16 +69,6 @@ body {
   color: #dc2626;
 }
 .btn-danger-outline:hover { background: #fef2f2; }
-
-.btn-sync {
-  border-color: #6ee7b7;
-  background: #fff;
-  color: #065f46;
-}
-.btn-sync:hover { background: #f0fdf4; }
-.btn-sync.ok { border-color: #34d399; background: #ecfdf5; color: #065f46; }
-.btn-sync.error { border-color: #fca5a5; background: #fef2f2; color: #dc2626; }
-.btn-sync:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Date filter */
 .date-filter { padding-bottom: 0; }

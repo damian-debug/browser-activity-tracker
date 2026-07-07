@@ -4,9 +4,9 @@ import {
   getDashboardStats,
   getSessionsInRange,
   deleteAllSessions,
-  getUnsyncedSessions,
   needsReview,
 } from "../storage/session-repo";
+import { sessionsToCsv } from "../shared/csv";
 import { listProjects } from "../storage/project-repo";
 import { listTags } from "../storage/tag-repo";
 import type { DashboardStats, AppSettings, Project, Session, Tag } from "../shared/types";
@@ -34,25 +34,21 @@ function Dashboard() {
   const [dateRange, setDateRange] = useState<DateRange>(presetToRange("today"));
   const [activeTab, setActiveTab] = useState<Tab>("projects");
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "ok" | "error">("idle");
-  const [unsyncedCount, setUnsyncedCount] = useState(0);
 
   const load = useCallback(async (range: DateRange, threshold: number) => {
     setLoading(true);
     const from = startOfDayMs(range.from);
     const to = endOfDayMs(range.to);
-    const [s, sess, projs, tgs, unsynced] = await Promise.all([
+    const [s, sess, projs, tgs] = await Promise.all([
       getDashboardStats(from, to, threshold),
       getSessionsInRange(from, to),
       listProjects(),
       listTags(),
-      getUnsyncedSessions(),
     ]);
     setStats(s);
     setSessions(sess);
     setProjects(projs);
     setTags(tgs);
-    setUnsyncedCount(unsynced.length);
     setLoading(false);
   }, []);
 
@@ -76,38 +72,36 @@ function Dashboard() {
     load(range, settings.reviewConfidenceThreshold);
   };
 
-  const handleExport = async () => {
-    const from = startOfDayMs(dateRange.from);
-    const to = endOfDayMs(dateRange.to);
-    const data = await getSessionsInRange(from, to);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const downloadBlob = (content: string, mimeType: string, filename: string) => {
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `activity-${dateRange.from}-${dateRange.to}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleSync = async () => {
-    if (
-      stats &&
-      stats.unassignedSeconds > 0 &&
-      !confirm("You have unassigned time in this date range. Review it now or export it as Unassigned?\n\nOK = sync anyway · Cancel = go review")
-    ) {
-      setActiveTab("review");
-      return;
-    }
-    setSyncStatus("syncing");
-    chrome.runtime.sendMessage({ type: "SYNC_NOW" }, (response) => {
-      if (response?.ok) {
-        setSyncStatus("ok");
-        setUnsyncedCount(0);
-      } else {
-        setSyncStatus("error");
-      }
-      setTimeout(() => setSyncStatus("idle"), 3000);
-    });
+  const handleExport = async () => {
+    const from = startOfDayMs(dateRange.from);
+    const to = endOfDayMs(dateRange.to);
+    const data = await getSessionsInRange(from, to);
+    downloadBlob(
+      JSON.stringify(data, null, 2),
+      "application/json",
+      `activity-${dateRange.from}-${dateRange.to}.json`
+    );
+  };
+
+  const handleExportCsv = async () => {
+    const from = startOfDayMs(dateRange.from);
+    const to = endOfDayMs(dateRange.to);
+    const data = await getSessionsInRange(from, to);
+    downloadBlob(
+      sessionsToCsv(data, projects, tags),
+      "text/csv",
+      `activity-${dateRange.from}-${dateRange.to}.csv`
+    );
   };
 
   const handleDeleteAll = async () => {
@@ -126,15 +120,7 @@ function Dashboard() {
         <div className="dash-title-row">
           <h1 className="dash-title">Activity Tracker</h1>
           <div className="dash-actions">
-            {settings.sync.sheetsWebhookUrl && (
-              <button
-                className={`btn-sync ${syncStatus}`}
-                onClick={handleSync}
-                disabled={syncStatus === "syncing"}
-              >
-                {syncStatus === "syncing" ? "Syncing…" : syncStatus === "ok" ? "Synced ✓" : syncStatus === "error" ? "Sync failed" : `Sync to Sheets${unsyncedCount > 0 ? ` (${unsyncedCount})` : ""}`}
-              </button>
-            )}
+            <button className="btn-outline" onClick={handleExportCsv}>Export CSV</button>
             <button className="btn-outline" onClick={handleExport}>Export JSON</button>
             <button className="btn-danger-outline" onClick={handleDeleteAll}>Delete All</button>
           </div>

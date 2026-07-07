@@ -19,11 +19,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   idleThresholdSeconds: DEFAULT_IDLE_THRESHOLD_SECONDS,
   excludedDomains: DEFAULT_EXCLUDED_DOMAINS,
   reviewConfidenceThreshold: DEFAULT_REVIEW_CONFIDENCE_THRESHOLD,
-  sync: {
-    sheetsWebhookUrl: "",
-    autoSyncEnabled: false,
-    syncIntervalMinutes: 30,
-  },
 };
 
 export const STORAGE_KEYS = {
@@ -35,8 +30,10 @@ export const STORAGE_KEYS = {
 } as const;
 
 export const ALARM_NAMES = {
-  SYNC: "bat_sync",
   HEARTBEAT: "bat_heartbeat",
+  // One-shot alarm at a timed override's expiresAt, so the live session stops
+  // crediting the override project at the expiry moment.
+  OVERRIDE_EXPIRY: "bat_override_expiry",
 } as const;
 
 // Heartbeat fires this often: checkpoints the active session to storage AND

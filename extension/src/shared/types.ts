@@ -109,10 +109,6 @@ export interface Session {
   endTime: number;    // unix ms
   durationSeconds: number;
 
-  // 0 | 1 (not boolean): IndexedDB cannot index booleans, and sync queries
-  // this index directly via where("syncedToSheets").equals(0).
-  syncedToSheets: 0 | 1;
-
   createdAt: number;
   updatedAt: number;
 }
@@ -220,16 +216,9 @@ export interface DashboardStats {
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
-export interface SyncSettings {
-  sheetsWebhookUrl: string;
-  autoSyncEnabled: boolean;
-  syncIntervalMinutes: number;
-}
-
 export interface AppSettings {
   idleThresholdSeconds: number;
   excludedDomains: string[];
   // Sessions below this confidence (or unassigned/unreviewed) appear in Review Needed
   reviewConfidenceThreshold: number;
-  sync: SyncSettings;
 }

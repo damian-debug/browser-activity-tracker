@@ -9,26 +9,20 @@ import type {
   Project,
   Tag,
 } from "../shared/types";
-import { startOfDayMs, endOfDayMs } from "../shared/utils";
+import { startOfDayMs, endOfDayMs, todayDateString } from "../shared/utils";
 import { DEFAULT_REVIEW_CONFIDENCE_THRESHOLD } from "../shared/constants";
 
 export async function saveSession(session: Session): Promise<void> {
   await db.sessions.put(session);
 }
 
+// Filters on startTime only: a session spanning midnight is attributed
+// entirely to the day it STARTED. Deliberate — totals stay simple and no
+// session is double-counted across two days.
 export async function getSessionsInRange(fromMs: number, toMs: number): Promise<Session[]> {
   return db.sessions.where("startTime").between(fromMs, toMs, true, true).toArray();
 }
 
-export async function getUnsyncedSessions(): Promise<Session[]> {
-  return db.sessions.where("syncedToSheets").equals(0).toArray();
-}
-
-export async function markSessionsSynced(ids: string[]): Promise<void> {
-  await db.sessions.where("id").anyOf(ids).modify({ syncedToSheets: 1 });
-}
-
-// Any edit re-queues the session for sync so the sheet row gets updated.
 export async function updateSession(
   id: string,
   patch: Partial<Omit<Session, "id" | "createdAt">>
@@ -36,7 +30,6 @@ export async function updateSession(
   await db.sessions.update(id, {
     ...patch,
     updatedAt: Date.now(),
-    syncedToSheets: 0,
   });
 }
 
@@ -201,6 +194,6 @@ export async function getDashboardStats(
 }
 
 export async function getTodayStats(): Promise<DashboardStats> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateString();
   return getDashboardStats(startOfDayMs(today), endOfDayMs(today));
 }

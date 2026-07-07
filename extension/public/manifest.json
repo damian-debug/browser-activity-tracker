@@ -1,18 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Browser Activity Tracker",
-  "version": "2.0.0",
-  "description": "Accurately tracks active time spent on websites and projects.",
+  "version": "2.1.0",
+  "description": "Accurately tracks active time spent on websites and projects. All data stays on your device.",
+  "minimum_chrome_version": "120",
 
   "permissions": [
     "tabs",
     "idle",
     "storage",
     "alarms"
-  ],
-
-  "host_permissions": [
-    "<all_urls>"
   ],
 
   "background": {

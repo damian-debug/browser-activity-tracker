@@ -93,7 +93,6 @@ async function finalizeAt(endTime: number): Promise<void> {
     startTime: finished.startTime,
     endTime,
     durationSeconds: duration,
-    syncedToSheets: 0,
     createdAt: now,
     updatedAt: now,
   };

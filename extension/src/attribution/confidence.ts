@@ -7,7 +7,6 @@ export const CONFIDENCE = {
   OVERRIDE: 100,
   URL_CONTAINS: 95,      // "strong URL rule"
   QUERY_PARAM: 90,
-  ENTITY: 85,            // a rule that pins a parsed entity (expressed as URL/query rule)
   URL_STARTS_WITH: 80,
   REGEX: 80,
   PATH_CONTAINS: 75,

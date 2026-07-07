@@ -22,7 +22,6 @@ const original: Session = {
   startTime: 9 * HOUR,        // 09:00
   endTime: 17 * HOUR,         // 17:00 (8h wall)
   durationSeconds: 6 * 3600,  // 6h active
-  syncedToSheets: 1,
   createdAt: 0,
   updatedAt: 0,
 };
@@ -67,7 +66,7 @@ describe("splitSession", () => {
     expect(total).toBe(6001);
   });
 
-  it("assigns new ids, marks segments manual/reviewed, and queues them for sync", () => {
+  it("assigns new ids and marks segments manual/reviewed", () => {
     const result = splitSession(original, {
       boundaries: [12 * HOUR],
       segments: [segment("A", true), segment(null)],
@@ -85,9 +84,6 @@ describe("splitSession", () => {
     expect(a.reviewed).toBe(true);     // got a project
     expect(a.billable).toBe(true);
     expect(b.reviewed).toBe(false);    // left unassigned
-
-    expect(a.syncedToSheets).toBe(0);
-    expect(b.syncedToSheets).toBe(0);
 
     // URL/domain/title preserved
     expect(a.url).toBe(original.url);

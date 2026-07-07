@@ -141,7 +141,6 @@ describe("active time accrual", () => {
     expect(s.tagIds).toEqual(["tag-1"]);
     expect(s.billable).toBe(true);
     expect(s.reviewed).toBe(true);
-    expect(s.syncedToSheets).toBe(0);
   });
 
   it("defaults to unassigned when no assignment is provided", async () => {

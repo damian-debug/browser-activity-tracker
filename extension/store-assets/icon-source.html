@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>html,body{margin:0;padding:0;background:transparent;}svg{display:block;}</style>
+</head>
+<body>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="256" y1="0" x2="256" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4d9fe8"/>
+      <stop offset="0.45" stop-color="#2f7bd9"/>
+      <stop offset="1" stop-color="#1a53c2"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.42" cy="0.38" r="0.75">
+      <stop offset="0" stop-color="#7cc0f5" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#7cc0f5" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cursorFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2f9ff"/>
+      <stop offset="1" stop-color="#a8cff4"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="60" y1="60" x2="452" y2="452" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#eaf4ff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#bcd9f7" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded-square app background -->
+  <rect x="6" y="6" width="500" height="500" rx="116" fill="url(#bg)"/>
+  <rect x="6" y="6" width="500" height="500" rx="116" fill="url(#glow)"/>
+
+  <!-- Orbit ring -->
+  <circle cx="256" cy="262" r="196" fill="none" stroke="url(#ring)" stroke-width="18"/>
+
+  <!-- Browser window peeking top-left -->
+  <g stroke="#ffffff" stroke-width="14" fill="none" stroke-linecap="round">
+    <rect x="84" y="92" width="180" height="140" rx="20"/>
+  </g>
+  <circle cx="114" cy="122" r="8" fill="#ffffff"/>
+  <circle cx="142" cy="122" r="8" fill="#ffffff"/>
+  <circle cx="170" cy="122" r="8" fill="#ffffff"/>
+
+  <!-- Clock (filled with bg gradient so it sits cleanly over window + ring) -->
+  <circle cx="262" cy="270" r="152" fill="url(#bg)" stroke="#ffffff" stroke-width="24"/>
+
+  <!-- Ticks -->
+  <g stroke="#ffffff" stroke-width="13" stroke-linecap="round">
+    <g transform="rotate(0,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(30,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(60,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(90,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(120,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(150,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(180,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(210,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(240,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(270,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(300,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+    <g transform="rotate(330,262,270)"><line x1="262" y1="152" x2="262" y2="176"/></g>
+  </g>
+
+  <!-- Hands at ~10:10 -->
+  <g stroke="#ffffff" stroke-linecap="round">
+    <line x1="262" y1="270" x2="203" y2="231" stroke-width="22"/>
+    <line x1="262" y1="270" x2="312" y2="195" stroke-width="19"/>
+  </g>
+  <circle cx="262" cy="270" r="15" fill="#ffffff"/>
+
+  <!-- Stopwatch badge top-right -->
+  <g>
+    <rect x="390" y="52" width="24" height="18" rx="6" fill="#ffffff"/>
+    <circle cx="402" cy="122" r="50" fill="url(#bg)" stroke="#ffffff" stroke-width="13"/>
+    <path d="M 402 84 A 38 38 0 0 1 440 122" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
+    <line x1="402" y1="122" x2="402" y2="94" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="402" cy="122" r="7" fill="#ffffff"/>
+  </g>
+
+  <!-- Cursor bottom-right (bg-colored halo lifts it off the ring/clock) -->
+  <g transform="translate(340,312)">
+    <path d="M 0 0 L 0 118 L 32 92 L 50 136 L 70 128 L 52 85 L 90 85 Z"
+          fill="url(#bg)" stroke="url(#bg)" stroke-width="34" stroke-linejoin="round"/>
+    <path d="M 0 0 L 0 118 L 32 92 L 50 136 L 70 128 L 52 85 L 90 85 Z"
+          fill="url(#cursorFill)" stroke="#ffffff" stroke-width="10" stroke-linejoin="round"/>
+  </g>
+</svg>
+</body>
+</html>

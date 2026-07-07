@@ -26,12 +26,20 @@ export function extractDomain(url: string): string | null {
   }
 }
 
+// LOCAL-time YYYY-MM-DD. Must not use toISOString (UTC): startOfDayMs /
+// endOfDayMs interpret these strings in local time, so deriving the date in
+// UTC would shift "today" by the timezone offset around midnight.
+function toLocalDateString(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function todayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalDateString(new Date());
 }
 
 export function dateStringForTimestamp(ts: number): string {
-  return new Date(ts).toISOString().slice(0, 10);
+  return toLocalDateString(new Date(ts));
 }
 
 export function startOfDayMs(dateStr: string): number {
@@ -45,7 +53,7 @@ export function endOfDayMs(dateStr: string): number {
 export function daysAgoDateString(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateString(d);
 }
 
 export function truncateUrl(url: string, maxLen = 60): string {

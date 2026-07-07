@@ -12,7 +12,7 @@ All code lives under `extension/`.
 ```bash
 cd extension
 npm install
-npm test          # Vitest — expect 5 test files / 49 tests passing
+npm test          # Vitest — expect 10 test files / 73 tests passing
 npm run typecheck  # tsc --noEmit
 npm run build      # outputs extension/dist/
 ```
@@ -34,8 +34,13 @@ app — `detectedEntityId`/`detectedEntityName`); rules decide *whose* time it i
   `chrome.storage.local` so an in-flight session survives the SW being killed
   and restarted (~30s idle timeout is normal in MV3). `restoreState()` decides
   whether to credit or discard the gap on wake, based on `MAX_CREDIT_GAP_SECONDS`.
-  `tracker.ts` wires up Chrome event listeners and holds the readiness gate
-  (`ensureReady`) so no event can race the restore.
+  `tracker.ts` wires up Chrome event listeners, holds the readiness gate
+  (`ensureReady`) so no event can race the restore, and serializes all
+  session-mutating handlers through `enqueue` (Chrome fires several events per
+  user action; two interleaved reconciles would fragment sessions). Window
+  focus gain must `reconcile()` — `tabs.onActivated` does NOT fire when
+  switching between Chrome windows. Timed overrides are enforced by a one-shot
+  `OVERRIDE_EXPIRY` alarm, re-derived from storage on every bootstrap.
 - `src/parsers/` — URL → entity extraction (Figma file ID, Bubble app ID).
   Continuity across navigation within the same entity is handled by
   `src/shared/tracking-target.ts` (`isSameTarget`), so clicking around inside
@@ -47,16 +52,18 @@ app — `detectedEntityId`/`detectedEntityName`); rules decide *whose* time it i
   generates rule suggestions for the "create rule from this session" UX.
 - `src/storage/` — Dexie (IndexedDB) repos. `db.ts` has the v1→v2 schema
   migration (old sessions get `detectedEntityId`/`detectedEntityName` populated
-  from what used to be `projectId`/`projectName`, and start `Unassigned`).
-  **Important gotcha already fixed once:** IndexedDB cannot index booleans —
-  `syncedToSheets` is stored as `0|1`, not `boolean`, specifically so
-  `where("syncedToSheets").equals(0)` works.
+  from what used to be `projectId`/`projectName`, and start `Unassigned`) and
+  the v2→v3 migration (drops the Sheets-sync `syncedToSheets` field/index).
+  `backup-repo.ts` does full export/import against `src/shared/backup.ts`.
 - `src/popup/`, `src/options/`, `src/dashboard/` — React UIs. Options has tabs
-  for General/Projects/Tags/Sync. Dashboard has Projects/Review
-  Needed/Sessions/Domains tabs, plus session edit and split modals.
-- `src/sync/sheets-sync.ts` + `apps-script/Code.gs` — Google Sheets export via
-  an Apps Script webhook (no OAuth). `Code.gs` upserts by Session ID into a
-  "Sessions v2" tab, so edited/re-synced sessions update in place.
+  for General/Projects/Tags/Backup & Restore. Dashboard has Projects/Review
+  Needed/Sessions/Domains tabs, session edit and split modals, and CSV/JSON
+  export of the visible date range.
+- **No network calls anywhere** — the extension is fully local by design (a
+  Google Sheets webhook sync existed pre-2.1 and was removed for Web Store
+  publication). Data portability is via `src/shared/backup.ts` (pure
+  build/validate/merge logic) and `src/shared/csv.ts`. Keep it that way: new
+  features must not add remote requests or host permissions.
 
 ## Conventions / things learned the hard way
 
@@ -66,4 +73,8 @@ app — `detectedEntityId`/`detectedEntityName`); rules decide *whose* time it i
 - When adding a new rule type or parser, add engine/parser tests in
   `tests/rule-engine.test.ts` — the engine is pure and deterministic by design,
   so it's cheap to test exhaustively.
-- Don't index boolean fields in Dexie schemas (see gotcha above).
+- Don't index boolean fields in Dexie schemas — IndexedDB cannot index
+  booleans (bit us once with a `synced` flag; store `0|1` if you must query it).
+- Derive date strings in LOCAL time (`src/shared/utils.ts`), never via
+  `toISOString()` — `startOfDayMs`/`endOfDayMs` interpret them locally, so a
+  UTC-derived "today" is wrong for part of every day in non-UTC timezones.

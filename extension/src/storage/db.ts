@@ -62,6 +62,24 @@ export class ActivityTrackerDB extends Dexie {
             delete raw.synced;
           });
       });
+
+    // V3: Google Sheets sync removed — drop the syncedToSheets index and strip
+    // the field from stored records. Local backup/restore replaced sync.
+    this.version(3)
+      .stores({
+        sessions: "id, domain, startTime, endTime, projectId, service, detectedEntityId",
+        projects: "id, name, createdAt",
+        projectRules: "id, projectId, priority",
+        tags: "id, name",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table("sessions")
+          .toCollection()
+          .modify((raw: Record<string, unknown>) => {
+            delete raw.syncedToSheets;
+          });
+      });
   }
 }
 

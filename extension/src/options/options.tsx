@@ -5,16 +5,16 @@ import { DEFAULT_SETTINGS, STORAGE_KEYS } from "../shared/constants";
 import { GeneralTab } from "./tabs/GeneralTab";
 import { ProjectsTab } from "./tabs/ProjectsTab";
 import { TagsTab } from "./tabs/TagsTab";
-import { SyncTab } from "./tabs/SyncTab";
+import { DataTab } from "./tabs/DataTab";
 import "./options.css";
 
-type TabId = "general" | "projects" | "tags" | "sync";
+type TabId = "general" | "projects" | "tags" | "data";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "general", label: "General" },
   { id: "projects", label: "Projects" },
   { id: "tags", label: "Tags" },
-  { id: "sync", label: "Sheets Sync" },
+  { id: "data", label: "Backup & Restore" },
 ];
 
 function Options() {
@@ -63,13 +63,13 @@ function Options() {
         {tab === "general" && <GeneralTab settings={settings} onChange={handleSettingsChange} />}
         {tab === "projects" && <ProjectsTab />}
         {tab === "tags" && <TagsTab />}
-        {tab === "sync" && <SyncTab settings={settings} onChange={handleSettingsChange} />}
+        {tab === "data" && <DataTab />}
 
         <section className="options-section">
           <h2>About</h2>
           <p className="about-text">
-            Browser Activity Tracker v2.0.0 — all data is stored locally on your machine. Nothing is
-            sent externally unless you configure the Sheets webhook.
+            Browser Activity Tracker v2.1.0 — all data is stored locally on your machine and never
+            leaves it. Use Backup &amp; Restore to move your data between devices.
           </p>
         </section>
       </div>

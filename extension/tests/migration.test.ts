@@ -96,20 +96,18 @@ describe("V1 → V2 migration", () => {
     db.close();
   });
 
-  it("converts synced boolean to indexable 0|1 (fixes the unsynced query bug)", async () => {
+  it("strips sync bookkeeping fields entirely (v3)", async () => {
     await createV1Database();
 
     const { db } = await import("../src/storage/db");
-    const { getUnsyncedSessions } = await import("../src/storage/session-repo");
 
+    // v1's `synced` was converted to `syncedToSheets` in v2, then dropped in
+    // v3 when the Sheets sync was removed. Neither survives.
     const all = await db.sessions.toArray();
-    expect(all.find((s) => s.id === "s2")!.syncedToSheets).toBe(1);
-    expect(all.find((s) => s.id === "s1")!.syncedToSheets).toBe(0);
-
-    // The V1 bug: where("synced").equals(0) over boolean false matched nothing.
-    // With 0|1 the index works — both unsynced V1 sessions must be returned.
-    const unsynced = await getUnsyncedSessions();
-    expect(unsynced.map((s) => s.id).sort()).toEqual(["s1", "s3"]);
+    for (const s of all as unknown as Record<string, unknown>[]) {
+      expect("synced" in s).toBe(false);
+      expect("syncedToSheets" in s).toBe(false);
+    }
     db.close();
   });
 
@@ -133,11 +131,11 @@ describe("V1 → V2 migration", () => {
     db.close();
   });
 
-  it("fresh install (no V1 data) opens cleanly at v2", async () => {
+  it("fresh install (no V1 data) opens cleanly at v3", async () => {
     const { db } = await import("../src/storage/db");
     await db.open();
     expect(await db.sessions.count()).toBe(0);
-    expect(db.verno).toBe(2);
+    expect(db.verno).toBe(3);
     db.close();
   });
 });

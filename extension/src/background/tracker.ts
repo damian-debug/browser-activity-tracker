@@ -26,10 +26,9 @@ import type {
 import { extractDomain } from "../shared/utils";
 import { isSameTarget } from "../shared/tracking-target";
 import { resolveAssignment } from "../attribution/resolve-assignment";
-import { setOverride, clearOverride, computeExpiresAt } from "../attribution/override-store";
+import { setOverride, clearOverride, getOverride, computeExpiresAt } from "../attribution/override-store";
 import { parseProjectFromUrl } from "../parsers";
 import { seedDefaults } from "../storage/seed-defaults";
-import { syncToSheets } from "../sync/sheets-sync";
 import { CONFIDENCE } from "../attribution/confidence";
 
 let settings: AppSettings = DEFAULT_SETTINGS;
@@ -47,13 +46,58 @@ function ensureReady(): Promise<void> {
   return readyPromise;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Serialization queue. Chrome often fires several events for one user action
+// (onActivated + onUpdated on a navigation, focus + activation on a window
+// switch). Handlers await storage/DB reads, so two in-flight reconciles could
+// interleave and each call startSession — fragmenting or double-counting the
+// session. Every session-mutating handler runs through this queue so exactly
+// one runs at a time, in arrival order.
+// ─────────────────────────────────────────────────────────────────────────────
+let opQueue: Promise<void> = Promise.resolve();
+
+function enqueue(fn: () => Promise<void>): Promise<void> {
+  const run = opQueue.then(fn);
+  // Swallow errors on the chain (not on `run`) so one failed op can't wedge
+  // every subsequent event handler.
+  opQueue = run.catch(() => {});
+  return run;
+}
+
 async function bootstrap(): Promise<void> {
   await loadSettings();
   chrome.idle.setDetectionInterval(settings.idleThresholdSeconds);
   chrome.alarms.create(ALARM_NAMES.HEARTBEAT, { periodInMinutes: HEARTBEAT_INTERVAL_MINUTES });
-  setupSyncAlarm();
   await seedDefaults();
   await restoreState();
+  await syncOverrideExpiryAlarm();
+  await reconcile();
+}
+
+// Timed overrides ("30 minutes" / "end of day") must end the *live* session at
+// the expiry moment, not just stop applying to future ones. A one-shot alarm at
+// expiresAt handles that; on every bootstrap we re-derive the alarm from the
+// stored override (alarms survive SW restarts but not browser restarts) and
+// drop an override that expired while the browser was closed.
+async function syncOverrideExpiryAlarm(): Promise<void> {
+  const override = await getOverride();
+  await chrome.alarms.clear(ALARM_NAMES.OVERRIDE_EXPIRY);
+  if (!override?.expiresAt) return;
+  if (override.expiresAt <= Date.now()) {
+    await clearOverride();
+  } else {
+    chrome.alarms.create(ALARM_NAMES.OVERRIDE_EXPIRY, { when: override.expiresAt });
+  }
+}
+
+// Fired when a timed override expires: drop it, close the session that was
+// accruing under it, and re-attribute the active tab from rules.
+async function handleOverrideExpiry(): Promise<void> {
+  const override = await getOverride();
+  if (!override) return;
+  if (override.expiresAt === undefined || override.expiresAt > Date.now()) return;
+  await clearOverride();
+  await endCurrentSession();
   await reconcile();
 }
 
@@ -113,53 +157,49 @@ async function reconcile(): Promise<void> {
 
 async function handleTabChange(): Promise<void> {
   await ensureReady();
-  await reconcile();
-}
-
-function setupSyncAlarm(): void {
-  chrome.alarms.clear(ALARM_NAMES.SYNC);
-  if (settings.sync.autoSyncEnabled && settings.sync.sheetsWebhookUrl) {
-    chrome.alarms.create(ALARM_NAMES.SYNC, {
-      periodInMinutes: settings.sync.syncIntervalMinutes,
-    });
-  }
+  await enqueue(reconcile);
 }
 
 // Registered synchronously at the top level of the SW script (see index.ts) so
 // Chrome can wake the worker for these events. Handler bodies may be async.
 export function registerListeners(): void {
   // Tab activated (switched to a different tab)
-  chrome.tabs.onActivated.addListener(() => {
-    handleTabChange();
-  });
+  chrome.tabs.onActivated.addListener(() => handleTabChange());
 
   // URL changed within a tab. Only react to real URL changes — title-only
   // updates (common on SPAs like Bubble/Figma) must not restart the session.
   chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
     if (!tab.active) return;
     if (!changeInfo.url) return;
-    handleTabChange();
+    return handleTabChange();
   });
 
-  // Window focus changed
+  // Window focus changed. tabs.onActivated only fires for tab switches WITHIN
+  // a window, so gaining focus must also reconcile — the newly focused window's
+  // active tab may be a different page than the session we were tracking.
   chrome.windows.onFocusChanged.addListener(async (windowId) => {
     await ensureReady();
-    if (windowId === chrome.windows.WINDOW_ID_NONE) {
-      await pauseSession("blur");
-    } else {
-      await resumeSession("blur");
-    }
+    await enqueue(async () => {
+      if (windowId === chrome.windows.WINDOW_ID_NONE) {
+        await pauseSession("blur");
+      } else {
+        await resumeSession("blur");
+        await reconcile();
+      }
+    });
   });
 
   // Idle state changed
   chrome.idle.onStateChanged.addListener(async (state) => {
     await ensureReady();
-    if (state === "active") {
-      await resumeSession("idle");
-    } else {
-      // idle or locked
-      await pauseSession("idle");
-    }
+    await enqueue(async () => {
+      if (state === "active") {
+        await resumeSession("idle");
+      } else {
+        // idle or locked
+        await pauseSession("idle");
+      }
+    });
   });
 
   // Settings changed from the options page
@@ -167,7 +207,6 @@ export function registerListeners(): void {
     if (changes[STORAGE_KEYS.SETTINGS]) {
       settings = { ...DEFAULT_SETTINGS, ...changes[STORAGE_KEYS.SETTINGS].newValue };
       chrome.idle.setDetectionInterval(settings.idleThresholdSeconds);
-      setupSyncAlarm();
     }
   });
 
@@ -175,12 +214,10 @@ export function registerListeners(): void {
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     await ensureReady();
     if (alarm.name === ALARM_NAMES.HEARTBEAT) {
-      await heartbeat();
+      await enqueue(heartbeat);
     }
-    if (alarm.name === ALARM_NAMES.SYNC) {
-      if (settings.sync.autoSyncEnabled && settings.sync.sheetsWebhookUrl) {
-        await syncToSheets(settings.sync.sheetsWebhookUrl);
-      }
+    if (alarm.name === ALARM_NAMES.OVERRIDE_EXPIRY) {
+      await enqueue(handleOverrideExpiry);
     }
   });
 
@@ -219,6 +256,10 @@ async function switchProject(payload: SwitchProjectPayload): Promise<void> {
     expiresAt: computeExpiresAt(payload.expires, now),
   };
   await setOverride(override);
+  await chrome.alarms.clear(ALARM_NAMES.OVERRIDE_EXPIRY);
+  if (override.expiresAt !== undefined) {
+    chrome.alarms.create(ALARM_NAMES.OVERRIDE_EXPIRY, { when: override.expiresAt });
+  }
 
   if (!info || isExcluded(info.url)) {
     await endCurrentSession();
@@ -245,11 +286,6 @@ async function handleMessage(
 ): Promise<void> {
   await ensureReady();
   switch (message.type) {
-    case "GET_STATUS": {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      sendResponse({ activeTab: tab ? { url: tab.url, title: tab.title } : null });
-      break;
-    }
     case "GET_ACTIVE": {
       const session = getActiveSession();
       if (!session) {
@@ -273,29 +309,18 @@ async function handleMessage(
       break;
     }
     case "SWITCH_PROJECT": {
-      await switchProject(message.payload as SwitchProjectPayload);
+      await enqueue(() => switchProject(message.payload as SwitchProjectPayload));
       sendResponse({ ok: true });
       break;
     }
     case "CLEAR_OVERRIDE": {
-      await clearOverride();
-      // Re-attribute the active tab from rules now that the override is gone.
-      await endCurrentSession();
-      await reconcile();
-      sendResponse({ ok: true });
-      break;
-    }
-    case "SYNC_NOW": {
-      if (settings.sync.sheetsWebhookUrl) {
-        const result = await syncToSheets(settings.sync.sheetsWebhookUrl);
-        sendResponse({ ok: result });
-      } else {
-        sendResponse({ ok: false, error: "No webhook URL configured" });
-      }
-      break;
-    }
-    case "END_SESSION": {
-      await endCurrentSession();
+      await enqueue(async () => {
+        await clearOverride();
+        await chrome.alarms.clear(ALARM_NAMES.OVERRIDE_EXPIRY);
+        // Re-attribute the active tab from rules now that the override is gone.
+        await endCurrentSession();
+        await reconcile();
+      });
       sendResponse({ ok: true });
       break;
     }

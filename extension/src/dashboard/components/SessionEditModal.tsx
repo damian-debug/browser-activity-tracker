@@ -56,9 +56,14 @@ export function SessionEditModal({ session, projects, tags, onDone, onClose, onS
       endTime,
       // Editing the window indirectly edits duration; never exceed wall time.
       durationSeconds: Math.min(session.durationSeconds, wallSeconds),
-      reviewed: projectChanged ? true : reviewed,
+      // Picking a project is a manual assignment (reviewed by definition).
+      // CLEARING the project must not fake confidence-100/reviewed, or the
+      // now-unassigned session would vanish from the Review queue.
+      reviewed: projectChanged && assign.projectId ? true : reviewed,
       ...(projectChanged
-        ? { assignmentSource: "manual_dashboard" as const, assignmentConfidence: 100 }
+        ? assign.projectId
+          ? { assignmentSource: "manual_dashboard" as const, assignmentConfidence: 100 }
+          : { assignmentSource: "unassigned" as const, assignmentConfidence: 0, matchedRuleId: undefined }
         : {}),
     });
     setSaving(false);

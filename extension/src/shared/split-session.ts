@@ -75,7 +75,6 @@ export function splitSession(original: Session, request: SplitRequest): SplitRes
       startTime: segStart,
       endTime: segEnd,
       durationSeconds,
-      syncedToSheets: 0 as const,
       createdAt: now,
       updatedAt: now,
     };
