@@ -10,3 +10,4 @@ DerivedData/
 
 # Assembled .app bundles
 build/
+dist/

@@ -11,12 +11,22 @@ cd "$(dirname "$0")"
 CONFIG="${1:-debug}"
 APP_NAME="Activity Tracker"
 BUNDLE_ID="studio.goodspeed.timetracker"
-VERSION="0.1.0"
-BUILD_DIR="TimeTrackerApp/.build/${CONFIG}"
+VERSION="${VERSION:-0.1.0}"
 APP="build/${APP_NAME}.app"
 
+# Release builds go to other people's Macs, so they are universal. An
+# arm64-only binary does not launch on an Intel Mac and the failure is opaque
+# ("the application cannot be opened"), so this is not worth leaving to chance.
+# Debug builds stay single-arch to keep the edit/run loop fast.
 echo "==> Building ($CONFIG)"
-(cd TimeTrackerApp && swift build -c "$CONFIG")
+if [ "$CONFIG" = "release" ]; then
+    # Universal builds land under a different path than single-arch ones.
+    BUILD_DIR="TimeTrackerApp/.build/apple/Products/Release"
+    (cd TimeTrackerApp && swift build -c release --arch arm64 --arch x86_64)
+else
+    BUILD_DIR="TimeTrackerApp/.build/${CONFIG}"
+    (cd TimeTrackerApp && swift build -c "$CONFIG")
+fi
 
 echo "==> Assembling $APP"
 rm -rf "$APP"
@@ -74,6 +84,14 @@ sign_with_identity() {
 
 if sign_with_identity; then
     echo "==> Signed with '$IDENTITY' (stable — permissions survive rebuilds)"
+elif [ "$CONFIG" = "release" ]; then
+    # Ad-hoc is tolerable locally but never for a release. Its designated
+    # requirement is derived from the code hash, so it changes with every
+    # build — every teammate would silently lose Accessibility on every
+    # update, with System Settings still showing the app as allowed.
+    echo "ERROR: cannot sign a release without '$IDENTITY'." >&2
+    echo "       Run ./scripts/create-signing-identity.sh first." >&2
+    exit 1
 else
     echo "==> Signing ad-hoc (no usable '$IDENTITY')"
     echo "    Accessibility will need re-granting after each rebuild."

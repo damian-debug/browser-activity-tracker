@@ -3,6 +3,8 @@
 Native menu bar time tracker. Replaces the Chrome extension in `../extension`,
 which could only see browser tabs.
 
+Installing it on a teammate's Mac: see [INSTALL.md](INSTALL.md).
+
 ## Layout
 
 | Path | What it is |
@@ -10,6 +12,8 @@ which could only see browser tabs.
 | `TimeTrackerCore/` | Pure domain logic — models, rule engine, timing, aggregation, backup. No AppKit, no dependencies, runs under `swift test` |
 | `TimeTrackerApp/` | The app — sensing, GRDB store, menu bar UI |
 | `make-app.sh` | Assembles `build/Activity Tracker.app` |
+| `make-release.sh` | Packages a signed universal build for the team |
+| `scripts/install.sh` | What teammates run to install and update |
 | `scripts/create-signing-identity.sh` | One-time setup for a stable signing identity |
 
 ## Build and run
