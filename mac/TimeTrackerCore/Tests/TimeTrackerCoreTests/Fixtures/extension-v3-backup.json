@@ -1,0 +1,101 @@
+{
+  "format": "bat-backup",
+  "schemaVersion": 3,
+  "exportedAt": 1700000000000,
+  "settings": {
+    "idleThresholdSeconds": 60,
+    "excludedDomains": [
+      "localhost",
+      "127.0.0.1",
+      "0.0.0.0",
+      "newtab",
+      "extensions"
+    ],
+    "reviewConfidenceThreshold": 70
+  },
+  "projects": [
+    {
+      "id": "p1",
+      "name": "Acme Corp",
+      "clientName": "Acme, Inc.",
+      "color": "#2563eb",
+      "defaultBillable": true,
+      "archived": false,
+      "createdAt": 1700000000000,
+      "updatedAt": 1700000000000
+    }
+  ],
+  "tags": [
+    {
+      "id": "t1",
+      "name": "Development",
+      "createdAt": 1700000000000,
+      "updatedAt": 1700000000000
+    }
+  ],
+  "rules": [
+    {
+      "id": "r1",
+      "projectId": "p1",
+      "name": "Acme: bubble",
+      "type": "query_param_equals",
+      "value": "sampleapp",
+      "queryParamName": "id",
+      "priority": 0,
+      "enabled": true,
+      "defaultTagIds": [
+        "t1"
+      ],
+      "defaultBillable": true,
+      "createdAt": 1700000000000,
+      "updatedAt": 1700000000000
+    }
+  ],
+  "sessions": [
+    {
+      "id": "s1",
+      "url": "https://bubble.io/page?id=sampleapp",
+      "domain": "bubble.io",
+      "title": "sampleapp | Bubble Editor",
+      "service": "bubble",
+      "detectedEntityId": "sampleapp",
+      "detectedEntityName": null,
+      "projectId": "p1",
+      "projectName": "Acme Corp",
+      "assignmentSource": "auto_rule",
+      "assignmentConfidence": 90,
+      "matchedRuleId": "r1",
+      "tagIds": [
+        "t1"
+      ],
+      "billable": true,
+      "reviewed": false,
+      "startTime": 1700000000000,
+      "endTime": 1700000060000,
+      "durationSeconds": 60,
+      "createdAt": 1700000000000,
+      "updatedAt": 1700000000000
+    },
+    {
+      "id": "s2",
+      "url": "https://example.com/docs",
+      "domain": "example.com",
+      "title": "Docs",
+      "service": null,
+      "detectedEntityId": null,
+      "detectedEntityName": null,
+      "projectId": null,
+      "projectName": null,
+      "assignmentSource": "unassigned",
+      "assignmentConfidence": 0,
+      "tagIds": [],
+      "billable": false,
+      "reviewed": false,
+      "startTime": 1700000070000,
+      "endTime": 1700000100000,
+      "durationSeconds": 30,
+      "createdAt": 1700000000000,
+      "updatedAt": 1700000000000
+    }
+  ]
+}
