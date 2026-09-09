@@ -12,7 +12,7 @@ final class AppModel {
     let store: TrackerStore
     private let coordinator: ActivityCoordinator
 
-    private let frontmost = FrontmostAppMonitor()
+    private let sampler = ActivitySampler()
     private let idle: IdleMonitor
     private let power = PowerMonitor()
     private var tickTimer: Timer?
@@ -24,6 +24,12 @@ final class AppModel {
     private(set) var allProjects: [Project] = []
     private(set) var activeOverride: ActiveProjectOverride?
     private(set) var lastError: String?
+
+    /// What the app can currently see. Drives the permission prompts in the UI
+    /// and explains why attribution may be coarser than expected.
+    private(set) var accessibilityTrusted = false
+    private(set) var deniedBrowsers: [String] = []
+    private(set) var unsupportedBrowsers: [String] = []
 
     var settings: AppSettings {
         didSet {
@@ -55,7 +61,7 @@ final class AppModel {
             }
         }
 
-        frontmost.onChange = { [weak self] snapshot in
+        sampler.onChange = { [weak self] snapshot in
             guard let self, !self.isManuallyPaused else { return }
             Task { await self.coordinator.observe(snapshot) }
         }
@@ -91,7 +97,7 @@ final class AppModel {
             Task { await self.coordinator.heartbeat() }
         }
 
-        frontmost.start()
+        sampler.start()
         idle.start()
         power.start()
 
@@ -124,6 +130,11 @@ final class AppModel {
     func refresh() async {
         status = await coordinator.status(now: Date())
         activeOverride = store.override()
+        accessibilityTrusted = sampler.isAccessibilityTrusted
+        deniedBrowsers = sampler.browserAccess
+            .filter { $0.value == .denied }.keys.sorted()
+        unsupportedBrowsers = sampler.browserAccess
+            .filter { $0.value == .unsupported }.keys.sorted()
         do {
             allProjects = try store.projects()
             favourites = try store.favouriteProjects()
@@ -180,7 +191,7 @@ final class AppModel {
         isManuallyPaused.toggle()
         if isManuallyPaused {
             await coordinator.endSession(at: Date())
-        } else if let snapshot = frontmost.currentSnapshot() {
+        } else if let snapshot = sampler.currentSnapshot() {
             await coordinator.observe(snapshot)
         }
         await refresh()
@@ -199,6 +210,35 @@ final class AppModel {
         guard !trimmed.isEmpty else { return }
         try? store.save(Project(name: trimmed, isFavourite: true))
         await refresh()
+    }
+
+    // ── Permissions ──────────────────────────────────────────────────────
+
+    /// Ask for Accessibility. macOS only shows a signpost to System Settings —
+    /// there is no programmatic grant and no completion callback, so the answer
+    /// shows up as `accessibilityTrusted` flipping on a later refresh.
+    func requestAccessibility() {
+        AccessibilityReader.requestAccess()
+    }
+
+    func openAccessibilitySettings() {
+        AccessibilityReader.openSystemSettings()
+    }
+
+    func openAutomationSettings() {
+        let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+        )!
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Human-readable name for a bundle id, for permission messages.
+    func appName(forBundleID bundleID: String) -> String {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            return FileManager.default.displayName(atPath: url.path)
+                .replacingOccurrences(of: ".app", with: "")
+        }
+        return bundleID
     }
 
     /// Menu bar label: the elapsed clock plus a hint of what it is being

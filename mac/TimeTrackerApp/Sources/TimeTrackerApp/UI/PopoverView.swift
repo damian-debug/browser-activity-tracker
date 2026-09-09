@@ -11,6 +11,10 @@ struct PopoverView: View {
             header
             Divider()
             currentActivity
+            if !model.accessibilityTrusted || !model.deniedBrowsers.isEmpty {
+                Divider()
+                permissions
+            }
             Divider()
             favourites
             Divider()
@@ -91,6 +95,54 @@ struct PopoverView: View {
         if reasons.contains(.displayAsleep) { return "asleep" }
         if reasons.contains(.idle) { return "idle" }
         return "paused"
+    }
+
+    // ── Permissions ──────────────────────────────────────────────────────
+    //
+    // Shown only when something is actually missing, and always phrased as what
+    // it unlocks rather than what the app wants. Everything keeps working
+    // without these; the attribution is just coarser.
+
+    private var permissions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !model.accessibilityTrusted {
+                permissionRow(
+                    title: "Track time per document",
+                    detail: "Let Activity Tracker read the title and file of the window you're in, so time lands on the right project instead of just the right app.",
+                    action: "Grant Access"
+                ) {
+                    model.requestAccessibility()
+                    model.openAccessibilitySettings()
+                }
+            }
+
+            ForEach(model.deniedBrowsers, id: \.self) { bundleID in
+                permissionRow(
+                    title: "Track websites in \(model.appName(forBundleID: bundleID))",
+                    detail: "Automation is turned off for this browser, so its tabs are tracked as one lump instead of per site.",
+                    action: "Open Settings"
+                ) {
+                    model.openAutomationSettings()
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private func permissionRow(
+        title: String, detail: String, action: String, perform: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "lock.open").foregroundStyle(.secondary)
+                Text(title).font(.caption.weight(.medium))
+            }
+            Text(detail).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button(action, action: perform)
+                .buttonStyle(.borderless)
+                .font(.caption)
+        }
     }
 
     // ── Favourites ───────────────────────────────────────────────────────

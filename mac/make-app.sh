@@ -51,11 +51,27 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Ad-hoc signing is enough while the app requests no permissions. Before
-# Phase 2 this must become a stable self-signed identity: TCC keys the
-# Accessibility grant to the signature, so a signature that changes on every
-# rebuild silently revokes it.
-echo "==> Signing (ad-hoc)"
-codesign --force --deep --sign - "$APP" 2>/dev/null
+# Signing identity.
+#
+# TCC keys the Accessibility grant to the code signature. Ad-hoc signing
+# produces a new signature on every build, so macOS silently drops the grant
+# and AXIsProcessTrusted() starts returning false while System Settings still
+# shows the app as allowed — the classic, maddening version of this bug.
+#
+# A stable self-signed identity avoids it. Create one once (see mac/README.md);
+# until then we fall back to ad-hoc, which works but means re-granting
+# Accessibility after each rebuild.
+IDENTITY="TimeTracker Local Signing"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+    echo "==> Signing with '$IDENTITY' (stable — permissions survive rebuilds)"
+    codesign --force --deep --options runtime \
+        --entitlements TimeTrackerApp/TimeTracker.entitlements \
+        --sign "$IDENTITY" "$APP"
+else
+    echo "==> Signing ad-hoc (no stable identity found)"
+    echo "    Accessibility permission will need re-granting after each rebuild."
+    echo "    See mac/README.md to set up a stable identity."
+    codesign --force --deep --sign - "$APP" 2>/dev/null
+fi
 
 echo "==> Built $APP"
