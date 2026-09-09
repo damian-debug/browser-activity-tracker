@@ -69,6 +69,7 @@ public extension ActivitySnapshot {
         merged.windowTitle = windowTitle ?? previous.windowTitle
         merged.url = url ?? previous.url
         merged.documentPath = documentPath ?? previous.documentPath
+        merged.gitBranch = gitBranch ?? previous.gitBranch
         return merged
     }
 }

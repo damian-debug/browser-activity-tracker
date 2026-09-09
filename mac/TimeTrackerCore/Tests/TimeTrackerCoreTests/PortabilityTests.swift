@@ -41,7 +41,7 @@ struct CSVExportTests {
         let csv = CSVExport.csv(sessions: [session()], projects: projects, tags: tags)
         let lines = csv.split(separator: "\r\n", omittingEmptySubsequences: true)
         #expect(lines.count == 2)
-        #expect(lines[0].hasPrefix("Date,Start,End,Duration (seconds),Project,Client"))
+        #expect(lines[0].hasPrefix("Date,Start,End,Duration (seconds),Project,Feature,Client"))
         #expect(lines[1].contains("Acme Corp"))
         #expect(lines[1].contains("\"Acme, Inc.\""))
         #expect(lines[1].contains("Design"))
@@ -51,7 +51,7 @@ struct CSVExportTests {
     @Test("carries the native columns the extension never had")
     func nativeColumns() {
         let csv = CSVExport.csv(sessions: [session()], projects: projects, tags: tags)
-        #expect(csv.contains("App,Window Title,Document"))
+        #expect(csv.contains("App,Window Title,Document,Branch"))
         #expect(csv.contains("Figma"))
         #expect(csv.contains("/Users/d/Projects/acme/kpi.fig"))
     }

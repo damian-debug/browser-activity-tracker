@@ -6,6 +6,8 @@ struct PopoverView: View {
     var openDashboard: () -> Void = {}
     @State private var newProjectName = ""
     @State private var showingNewProject = false
+    @State private var newFeatureName = ""
+    @State private var showingNewFeature = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -74,7 +76,7 @@ struct PopoverView: View {
                     Menu {
                         Button("Unassigned") { Task { await model.assignCurrentSession(to: nil) } }
                         Divider()
-                        ForEach(model.allProjects) { project in
+                        ForEach(model.topLevelProjects) { project in
                             Button(project.name) {
                                 Task { await model.assignCurrentSession(to: project) }
                             }
@@ -86,6 +88,14 @@ struct PopoverView: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
+
+                    // The feature within that project. Only shown once there is
+                    // a project to hang it on, so it never adds noise for
+                    // unassigned time.
+                    if model.status.projectId != nil {
+                        Text("›").font(.caption2).foregroundStyle(.tertiary)
+                        featureMenu
+                    }
 
                     if let source = model.status.assignmentSource, source == .suggested {
                         Text("suggested")
@@ -100,6 +110,16 @@ struct PopoverView: View {
                         Button("Stop timer") { Task { await model.stopTimer() } }
                             .buttonStyle(.borderless)
                             .font(.caption)
+                    }
+                }
+
+                if showingNewFeature, let projectId = model.status.projectId {
+                    HStack {
+                        TextField("Feature name", text: $newFeatureName)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { addFeature(to: projectId) }
+                        Button("Add") { addFeature(to: projectId) }
+                            .disabled(newFeatureName.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
 
@@ -118,6 +138,28 @@ struct PopoverView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Picking a feature is deliberately persistent: it stays set until you
+    /// change it, because you know which feature you are on and the Mac does not.
+    private var featureMenu: some View {
+        Menu {
+            Button("No feature") { Task { await model.setCurrentFeature(nil) } }
+            if !model.featuresOfCurrentProject.isEmpty {
+                Divider()
+                ForEach(model.featuresOfCurrentProject) { feature in
+                    Button(feature.name) { Task { await model.setCurrentFeature(feature) } }
+                }
+            }
+            Divider()
+            Button("New feature…") { showingNewFeature = true }
+        } label: {
+            Text(model.status.featureName ?? "Add feature")
+                .font(.caption)
+                .foregroundStyle(model.status.featureId == nil ? .secondary : .primary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 
     private var pauseLabel: String {
@@ -252,6 +294,13 @@ struct PopoverView: View {
 
     private func secondsToday(_ projectId: String) -> Int {
         model.todayStats.projectTotals.first { $0.projectId == projectId }?.totalSeconds ?? 0
+    }
+
+    private func addFeature(to projectId: String) {
+        let name = newFeatureName
+        newFeatureName = ""
+        showingNewFeature = false
+        Task { await model.createFeature(named: name, in: projectId) }
     }
 
     private func addProject() {

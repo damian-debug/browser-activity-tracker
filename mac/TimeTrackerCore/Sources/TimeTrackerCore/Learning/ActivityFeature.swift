@@ -8,8 +8,11 @@ import Foundation
 public struct ActivityFeature: Hashable, Sendable {
     public enum Kind: String, Sendable, CaseIterable {
         case app          // app:com.figma.Desktop
+        case ticket       // ticket:ACME-123
         case entity       // entity:figma::abc123
-        case document     // doc:/Users/d/Projects/acme
+        case place        // place:figma::abc123#12-34   (a page within a file)
+        case branch       // branch:feature/payments
+        case document     // document:/Users/d/Projects/acme
         case path         // path:app.example.com/project/acme
         case host         // host:figma.com
         case title        // title:acme
@@ -23,7 +26,12 @@ public struct ActivityFeature: Hashable, Sendable {
         /// *consistently* a feature has pointed at one project decides the rest.
         public var weight: Double {
             switch self {
+            // A ticket or a specific page within a file names the work almost
+            // exactly, which is precisely what a feature is.
+            case .ticket: return 4.0
+            case .place: return 4.0
             case .entity: return 4.0
+            case .branch: return 3.5
             case .document: return 3.0
             case .path: return 2.5
             case .host: return 1.5
@@ -56,6 +64,9 @@ public struct ActivityFeature: Hashable, Sendable {
     public var describedSubject: String {
         switch kind {
         case .app: return "this app"
+        case .ticket: return value
+        case .branch: return "the branch \(value)"
+        case .place: return value.replacingOccurrences(of: "::", with: " ")
         case .entity: return value.replacingOccurrences(of: "::", with: " ")
         case .document: return value
         case .path: return value
@@ -84,6 +95,7 @@ public enum FeatureExtractor {
             url: snapshot.url,
             domain: snapshot.domain,
             documentPath: snapshot.documentPath,
+            branch: snapshot.gitBranch,
             parsed: snapshot.parsed
         )
     }
@@ -102,6 +114,7 @@ public enum FeatureExtractor {
             url: session.url,
             domain: session.domain,
             documentPath: session.documentPath,
+            branch: session.gitBranch,
             parsed: parsed
         )
     }
@@ -113,6 +126,7 @@ public enum FeatureExtractor {
         url: String?,
         domain: String?,
         documentPath: String?,
+        branch: String?,
         parsed: ParsedEntity?
     ) -> [ActivityFeature] {
         var features: [ActivityFeature] = []
@@ -125,6 +139,20 @@ public enum FeatureExtractor {
             features.append(ActivityFeature(
                 kind: .entity, value: "\(parsed.service)::\(parsed.entityId)"
             ))
+            if let subEntity = parsed.subEntityId {
+                features.append(ActivityFeature(
+                    kind: .place,
+                    value: "\(parsed.service)::\(parsed.entityId)#\(subEntity)"
+                ))
+            }
+        }
+
+        if let ticket = WorkSignals.ticket(url: url, title: windowTitle) {
+            features.append(ActivityFeature(kind: .ticket, value: ticket))
+        }
+
+        if let branch, !branch.isEmpty {
+            features.append(ActivityFeature(kind: .branch, value: branch))
         }
 
         if let domain, !domain.isEmpty {

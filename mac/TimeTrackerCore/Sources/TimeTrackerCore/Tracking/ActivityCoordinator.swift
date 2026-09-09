@@ -81,6 +81,8 @@ public actor ActivityCoordinator {
             displayTitle: current.snapshot.displayTitle,
             projectId: current.assignment.projectId,
             projectName: current.assignment.projectName,
+            featureId: current.assignment.featureId,
+            featureName: current.assignment.featureName,
             assignmentSource: current.assignment.assignmentSource,
             assignmentConfidence: current.assignment.assignmentConfidence
         )
@@ -139,9 +141,29 @@ public actor ActivityCoordinator {
             if result.billable == nil { billable = project?.defaultBillable ?? false }
         }
 
+        // A second, narrower pass: which feature of that project is this?
+        // Kept separate so being sure of the project and unsure of the feature
+        // is an ordinary, expressible outcome rather than an all-or-nothing bet.
+        var featureId: String?
+        var featureName: String?
+        if let projectId = result.projectId {
+            // What you said beats what the model inferred, exactly as an
+            // override beats a rule one level up.
+            if let chosen = await dependencies.currentFeature(), chosen.projectId == projectId {
+                featureId = chosen.id
+                featureName = chosen.name
+            } else if settings.learningEnabled,
+                      let feature = await suggestFeature(for: snapshot, ofProject: projectId, now: now) {
+                featureId = feature.projectId
+                featureName = await dependencies.projectName(feature.projectId)
+            }
+        }
+
         let assignment = Assignment(
             projectId: result.projectId,
             projectName: projectName,
+            featureId: featureId,
+            featureName: featureName,
             assignmentSource: result.assignmentSource,
             assignmentConfidence: result.assignmentConfidence,
             matchedRuleId: result.matchedRuleId,
@@ -181,6 +203,25 @@ public actor ActivityCoordinator {
         return suggestion.confidence >= settings.learnedMinimumConfidence ? suggestion : nil
     }
 
+    /// Which feature of `projectId` this activity most likely belongs to.
+    private func suggestFeature(
+        for snapshot: ActivitySnapshot, ofProject projectId: String, now: Date
+    ) async -> LearnedSuggestion? {
+        let candidates = await dependencies.featureIds(ofProject: projectId)
+        guard !candidates.isEmpty else { return nil }
+
+        let features = FeatureExtractor.features(for: snapshot)
+        guard !features.isEmpty else { return nil }
+
+        let associations = await dependencies.associations(forFeatureKeys: features.map(\.key))
+        guard let suggestion = learned.suggest(
+            features: features, associations: associations,
+            eligibleProjectIds: candidates, now: now
+        ) else { return nil }
+
+        return suggestion.confidence >= settings.learnedMinimumConfidence ? suggestion : nil
+    }
+
     /// Close the current session, persisting it if it is long enough to matter.
     public func endSession(at date: Date = Date()) async {
         guard let session = current else { return }
@@ -205,7 +246,14 @@ public actor ActivityCoordinator {
               Self.isTrustworthyEvidence(session.assignmentSource)
         else { return }
 
-        await dependencies.record(learned.observations(for: session, projectId: projectId))
+        var observations = learned.observations(for: session, projectId: projectId)
+        // Record against the feature too, so the narrower pass has something to
+        // learn from. Features share the project id namespace, so this needs no
+        // separate model.
+        if let featureId = session.featureId {
+            observations += learned.observations(for: session, projectId: featureId)
+        }
+        await dependencies.record(observations)
     }
 
     static func isTrustworthyEvidence(_ source: AssignmentSource) -> Bool {

@@ -41,6 +41,16 @@ public final class TrackerStore: Sendable {
         }
     }
 
+    /// Top-level projects only — the things you bill for.
+    public func topLevelProjects() throws -> [Project] {
+        try projects().topLevel
+    }
+
+    /// Features belonging to a project.
+    public func features(ofProject projectId: String) throws -> [Project] {
+        try projects().features(of: projectId)
+    }
+
     public func favouriteProjects() throws -> [Project] {
         try projects().filter(\.isFavourite)
             .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
@@ -51,10 +61,16 @@ public final class TrackerStore: Sendable {
     }
 
     public func deleteProject(id: String) throws {
+        // Deleting a project takes its features with it, but never the time:
+        // sessions survive as unassigned so history stays intact.
+        for feature in (try? features(ofProject: id)) ?? [] {
+            try deleteProject(id: feature.id)
+        }
         _ = try dbQueue.write { db in
             // Sessions deliberately survive: deleting a project must not delete
             // the record of time already spent on it.
             try db.execute(sql: "UPDATE session SET projectId = NULL WHERE projectId = ?", arguments: [id])
+            try db.execute(sql: "UPDATE session SET featureId = NULL, featureName = NULL WHERE featureId = ?", arguments: [id])
             // What was learned about it must go, though, or it would keep being
             // suggested from beyond the grave.
             try FeatureAssociationRecord.filter(Column("projectId") == id).deleteAll(db)
@@ -143,6 +159,7 @@ public final class TrackerStore: Sendable {
     private static let settingsKey = "settings"
     private static let overrideKey = "override"
     private static let activeSessionKey = "activeSession"
+    private static let currentFeatureKey = "currentFeature"
     private static let diagnosticsKey = "diagnostics"
 
     private func readJSON<T: Decodable>(_ key: String, as type: T.Type) -> T? {
@@ -171,6 +188,15 @@ public final class TrackerStore: Sendable {
 
     public func saveSettings(_ settings: AppSettings) throws {
         try writeJSON(Self.settingsKey, settings)
+    }
+
+    /// The feature you last said you were working on.
+    public func currentFeatureId() -> String? {
+        readJSON(Self.currentFeatureKey, as: String.self)
+    }
+
+    public func saveCurrentFeatureId(_ id: String?) throws {
+        try writeJSON(Self.currentFeatureKey, id)
     }
 
     public func override() -> ActiveProjectOverride? {
@@ -372,7 +398,25 @@ extension TrackerStore: TrackingDependencies {
     }
 
     public func eligibleProjectIds() async -> Set<String> {
-        Set(((try? projects()) ?? []).map(\.id))
+        // Top-level only: which feature it is gets decided by a separate,
+        // narrower pass once the project is known.
+        Set(((try? topLevelProjects()) ?? []).map(\.id))
+    }
+
+    public func featureIds(ofProject projectId: String) async -> Set<String> {
+        Set(((try? features(ofProject: projectId)) ?? []).map(\.id))
+    }
+
+    public func projectName(_ id: String) async -> String? {
+        try? await dbQueue.read { db in try ProjectRecord.fetchOne(db, key: id)?.name }
+    }
+
+    public func currentFeature() async -> (id: String, projectId: String, name: String)? {
+        guard let id = currentFeatureId(),
+              let record = try? await dbQueue.read({ db in try ProjectRecord.fetchOne(db, key: id) }),
+              let parentId = record.parentId
+        else { return nil }
+        return (id: record.id, projectId: parentId, name: record.name)
     }
 
     public func record(_ observations: [FeatureObservation]) async {

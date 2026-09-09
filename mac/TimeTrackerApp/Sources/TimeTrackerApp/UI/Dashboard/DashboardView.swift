@@ -104,12 +104,29 @@ private struct ProjectTotalsTable: View {
     let model: DashboardModel
 
     var body: some View {
-        Table(model.stats.projectTotals) {
-            TableColumn("Project") { Text($0.projectName) }
-            TableColumn("Client") { Text($0.clientName ?? "") }
-            TableColumn("Tracked") { Text(DurationFormatter.long($0.totalSeconds)) }
-            TableColumn("Billable") { Text(DurationFormatter.long($0.billableSeconds)) }
-            TableColumn("Sessions") { Text("\($0.sessionCount)") }
+        VSplitView {
+            Table(model.stats.projectTotals) {
+                TableColumn("Project") { Text($0.projectName) }
+                TableColumn("Client") { Text($0.clientName ?? "") }
+                TableColumn("Tracked") { Text(DurationFormatter.long($0.totalSeconds)) }
+                TableColumn("Billable") { Text(DurationFormatter.long($0.billableSeconds)) }
+                TableColumn("Sessions") { Text("\($0.sessionCount)") }
+            }
+
+            if !model.stats.featureTotals.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Features")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.horizontal, 12).padding(.top, 8)
+                    Table(model.stats.featureTotals) {
+                        TableColumn("Feature") { Text($0.featureName) }
+                        TableColumn("Project") { Text($0.projectName).foregroundStyle(.secondary) }
+                        TableColumn("Tracked") { Text(DurationFormatter.long($0.totalSeconds)) }
+                        TableColumn("Billable") { Text(DurationFormatter.long($0.billableSeconds)) }
+                        TableColumn("Sessions") { Text("\($0.sessionCount)") }
+                    }
+                }
+            }
         }
     }
 }
@@ -165,6 +182,9 @@ private struct SessionTable: View {
             }
             TableColumn("Project") { session in
                 ProjectMenu(model: model, session: session)
+            }
+            TableColumn("Feature") { session in
+                FeatureMenu(model: model, session: session)
             }
             TableColumn("Source") { session in
                 Text(sourceLabel(session)).font(.caption).foregroundStyle(.secondary)
@@ -247,7 +267,7 @@ private struct ReviewQueueView: View {
             Text("\(selection.count) selected").font(.caption)
             Spacer()
             Menu("Assign all to…") {
-                ForEach(model.projects) { project in
+                ForEach(model.topLevelProjects) { project in
                     Button(project.name) {
                         let chosen = model.reviewSessions.filter { selection.contains($0.id) }
                         model.assignAll(chosen, to: project)
@@ -271,7 +291,7 @@ private struct ProjectMenu: View {
         Menu {
             Button("Unassigned") { model.assign(session, to: nil) }
             Divider()
-            ForEach(model.projects) { project in
+            ForEach(model.topLevelProjects) { project in
                 Button(project.name) { model.assign(session, to: project) }
             }
         } label: {
@@ -280,6 +300,31 @@ private struct ProjectMenu: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+    }
+}
+
+private struct FeatureMenu: View {
+    let model: DashboardModel
+    let session: Session
+
+    var body: some View {
+        let features = model.features(of: session.projectId)
+        if features.isEmpty {
+            Text("—").foregroundStyle(.tertiary)
+        } else {
+            Menu {
+                Button("None") { model.assign(session, toFeature: nil) }
+                Divider()
+                ForEach(features) { feature in
+                    Button(feature.name) { model.assign(session, toFeature: feature) }
+                }
+            } label: {
+                Text(session.featureId == nil ? "—" : model.featureName(session.featureId))
+                    .foregroundStyle(session.featureId == nil ? .secondary : .primary)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
     }
 }
 

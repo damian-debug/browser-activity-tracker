@@ -11,6 +11,9 @@ public struct ActivitySnapshot: Hashable, Sendable, Codable {
     public var windowTitle: String?      // Accessibility
     public var url: String?              // Automation (browsers only)
     public var documentPath: String?     // Accessibility (kAXDocumentAttribute)
+    /// Checked-out branch of the repository the open document belongs to.
+    /// Derived, not observed: the sampler reads it from .git/HEAD.
+    public var gitBranch: String?
     public var capturedAt: Date
 
     public init(
@@ -19,6 +22,7 @@ public struct ActivitySnapshot: Hashable, Sendable, Codable {
         windowTitle: String? = nil,
         url: String? = nil,
         documentPath: String? = nil,
+        gitBranch: String? = nil,
         capturedAt: Date = Date()
     ) {
         self.bundleID = bundleID
@@ -26,6 +30,7 @@ public struct ActivitySnapshot: Hashable, Sendable, Codable {
         self.windowTitle = windowTitle
         self.url = url
         self.documentPath = documentPath
+        self.gitBranch = gitBranch
         self.capturedAt = capturedAt
     }
 

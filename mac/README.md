@@ -102,6 +102,32 @@ Export CSV covers the visible range. Backup saves everything (projects, tags,
 rules, sessions, settings) to a single file; restore either merges it or
 replaces what is here.
 
+## Projects and features
+
+A feature is a project with a parent — two levels, no deeper. `Acme Corp ›
+Payment integration`. Sessions record both, so project totals stay whole
+however finely the work is broken down, and every existing report, rule and
+export keeps working untouched.
+
+Pick the feature from the popover next to the project. It is deliberately
+**persistent**: it stays set until you change it, and applies only while its
+own project is the one being tracked. You know which feature you are on; the
+Mac does not.
+
+Three signals help it learn which feature is which. None of them *are*
+features — they are evidence fed to the same learning layer as everything
+else, so picking "Payments" once while on `feature/payments` is what creates
+the association:
+
+| Signal | Where it comes from |
+|---|---|
+| Ticket key | `ACME-123` in a URL or window title (Jira, Linear), or `repo#482` for GitHub issues and PRs |
+| Git branch | `.git/HEAD` beside the open document. Ignores main/master/develop, which name no feature |
+| Figma page | The `node-id` in a Figma URL, so one page of a file is distinguishable from another |
+
+Git branch needs a document path, which Electron editors like VS Code do not
+expose — it works for Xcode and native editors today.
+
 ## How attribution works
 
 In order, first match wins:

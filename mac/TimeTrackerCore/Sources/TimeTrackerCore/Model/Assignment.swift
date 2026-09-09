@@ -20,6 +20,8 @@ public enum AssignmentSource: String, CaseIterable, Hashable, Sendable, Codable 
 public struct Assignment: Hashable, Sendable, Codable {
     public var projectId: String?
     public var projectName: String?
+    public var featureId: String?
+    public var featureName: String?
     public var assignmentSource: AssignmentSource
     public var assignmentConfidence: Int
     public var matchedRuleId: String?
@@ -29,6 +31,8 @@ public struct Assignment: Hashable, Sendable, Codable {
     public init(
         projectId: String? = nil,
         projectName: String? = nil,
+        featureId: String? = nil,
+        featureName: String? = nil,
         assignmentSource: AssignmentSource,
         assignmentConfidence: Int,
         matchedRuleId: String? = nil,
@@ -37,6 +41,8 @@ public struct Assignment: Hashable, Sendable, Codable {
     ) {
         self.projectId = projectId
         self.projectName = projectName
+        self.featureId = featureId
+        self.featureName = featureName
         self.assignmentSource = assignmentSource
         self.assignmentConfidence = assignmentConfidence
         self.matchedRuleId = matchedRuleId

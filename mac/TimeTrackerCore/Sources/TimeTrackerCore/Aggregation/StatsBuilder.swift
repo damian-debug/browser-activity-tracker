@@ -30,6 +30,7 @@ public enum StatsBuilder {
         var domains: [String: DomainSummary] = [:]
         var entities: [String: EntitySummary] = [:]
         var projectTotals: [String: ProjectTotal] = [:]
+        var featureTotals: [String: FeatureTotal] = [:]
         var tagTotals: [String: TagTotal] = [:]
 
         for session in sessions {
@@ -107,6 +108,26 @@ public enum StatsBuilder {
                 projectTotals[projectKey]?.tagIds.append(tagId)
             }
 
+            // Feature totals. These roll up *inside* a project rather than
+            // alongside it, so project figures stay whole however the work is
+            // broken down.
+            if let featureId = session.featureId {
+                if featureTotals[featureId] == nil {
+                    let feature = projectsById[featureId]
+                    featureTotals[featureId] = FeatureTotal(
+                        featureId: featureId,
+                        featureName: feature?.name ?? session.featureName ?? "Unknown feature",
+                        projectId: session.projectId,
+                        projectName: session.projectId.flatMap { projectsById[$0]?.name }
+                            ?? session.projectName ?? "Unassigned",
+                        totalSeconds: 0, billableSeconds: 0, sessionCount: 0
+                    )
+                }
+                featureTotals[featureId]?.totalSeconds += seconds
+                featureTotals[featureId]?.sessionCount += 1
+                if session.billable { featureTotals[featureId]?.billableSeconds += seconds }
+            }
+
             // Tag totals — a session with N tags counts toward each of them, so
             // these deliberately sum to more than the total.
             for tagId in session.tagIds {
@@ -126,6 +147,7 @@ public enum StatsBuilder {
         stats.domains = domains.values.sorted { byTime($0.totalSeconds, $1.totalSeconds) }
         stats.entities = entities.values.sorted { byTime($0.totalSeconds, $1.totalSeconds) }
         stats.projectTotals = projectTotals.values.sorted { byTime($0.totalSeconds, $1.totalSeconds) }
+        stats.featureTotals = featureTotals.values.sorted { byTime($0.totalSeconds, $1.totalSeconds) }
         stats.tagTotals = tagTotals.values.sorted { byTime($0.totalSeconds, $1.totalSeconds) }
         return stats
     }

@@ -58,12 +58,20 @@ enum AccessibilityReader {
         )
     }
 
-    /// `kAXDocumentAttribute` reports a file:// URL string; store the plain
-    /// path, which is what document-path rules are written against.
+    /// The open document's path, and only ever a path.
+    ///
+    /// `kAXDocumentAttribute` is documented as a file URL, but browsers return
+    /// the page address instead — Chrome reports `https://…` and
+    /// `chrome://newtab/`. Storing those as document paths duplicated the URL
+    /// signal and polluted the learned model with nonsense folder features, so
+    /// anything that is not a real file path is rejected here.
     private static func documentPath(of window: AXUIElement) -> String? {
         guard let raw = copyString(window, kAXDocumentAttribute), !raw.isEmpty else { return nil }
+
         if let url = URL(string: raw), url.isFileURL { return url.path }
-        return raw
+        // Some apps report a bare POSIX path rather than a URL.
+        if raw.hasPrefix("/") { return raw }
+        return nil
     }
 
     // ── AX plumbing ──────────────────────────────────────────────────────

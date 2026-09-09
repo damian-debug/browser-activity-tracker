@@ -16,9 +16,24 @@ public protocol TrackingDependencies: Sendable {
     /// an indexed lookup, not a scan of everything ever learned.
     func associations(forFeatureKeys keys: [String]) async -> [FeatureAssociation]
 
-    /// Projects that still exist and are not archived. Suggesting a deleted
-    /// project would be worse than saying nothing.
+    /// Top-level projects that still exist and are not archived. Suggesting a
+    /// deleted project would be worse than saying nothing.
     func eligibleProjectIds() async -> Set<String>
+
+    /// Features belonging to a project. Suggesting a feature is a second,
+    /// narrower pass over the same model, so a confident project and an
+    /// unsure feature is a perfectly ordinary outcome.
+    func featureIds(ofProject projectId: String) async -> Set<String>
+
+    /// Display name for a project or feature.
+    func projectName(_ id: String) async -> String?
+
+    /// The feature you said you were working on, if any.
+    ///
+    /// Persistent and deliberate — it stays set until changed, and applies only
+    /// while its own project is the one being tracked. You know which feature
+    /// you are on; the Mac does not.
+    func currentFeature() async -> (id: String, projectId: String, name: String)?
 
     func record(_ observations: [FeatureObservation]) async
 }
@@ -28,6 +43,9 @@ public extension TrackingDependencies {
     // double, say — need not implement it.
     func associations(forFeatureKeys keys: [String]) async -> [FeatureAssociation] { [] }
     func eligibleProjectIds() async -> Set<String> { [] }
+    func featureIds(ofProject projectId: String) async -> Set<String> { [] }
+    func projectName(_ id: String) async -> String? { nil }
+    func currentFeature() async -> (id: String, projectId: String, name: String)? { nil }
     func record(_ observations: [FeatureObservation]) async {}
 }
 
@@ -41,6 +59,8 @@ public struct TrackingStatus: Hashable, Sendable {
     public var displayTitle: String?
     public var projectId: String?
     public var projectName: String?
+    public var featureId: String?
+    public var featureName: String?
     public var assignmentSource: AssignmentSource?
     public var assignmentConfidence: Int?
 

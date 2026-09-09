@@ -22,6 +22,9 @@ final class AppModel {
     private(set) var todayStats: DashboardStats = .empty
     private(set) var favourites: [Project] = []
     private(set) var allProjects: [Project] = []
+    /// Top-level projects only — features live under whichever one is active.
+    private(set) var topLevelProjects: [Project] = []
+    private(set) var currentFeatureId: String?
     private(set) var activeOverride: ActiveProjectOverride?
     private(set) var lastError: String?
 
@@ -149,6 +152,8 @@ final class AppModel {
         ))
         do {
             allProjects = try store.projects()
+            topLevelProjects = allProjects.topLevel
+            currentFeatureId = store.currentFeatureId()
             favourites = try store.favouriteProjects()
             let helpers = DateHelpers.current
             let today = helpers.todayDateString()
@@ -221,6 +226,38 @@ final class AppModel {
         }
         await coordinator.reassignCurrentSession(to: assignment)
         await refresh()
+    }
+
+    /// Features of whichever project is being tracked right now.
+    var featuresOfCurrentProject: [Project] {
+        guard let projectId = status.projectId else { return [] }
+        return allProjects.features(of: projectId)
+    }
+
+    /// Say which feature you are working on. It sticks until changed, and only
+    /// applies while its own project is the one being tracked.
+    func setCurrentFeature(_ feature: Project?) async {
+        try? store.saveCurrentFeatureId(feature?.id)
+        if let projectId = status.projectId {
+            await coordinator.reassignCurrentSession(to: Assignment(
+                projectId: projectId,
+                projectName: status.projectName,
+                featureId: feature?.id,
+                featureName: feature?.name,
+                assignmentSource: status.assignmentSource ?? .manualPopup,
+                assignmentConfidence: status.assignmentConfidence ?? Confidence.manual,
+                billable: allProjects.first { $0.id == projectId }?.defaultBillable ?? false
+            ))
+        }
+        await refresh()
+    }
+
+    func createFeature(named name: String, in projectId: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let feature = Project(name: trimmed, parentId: projectId)
+        try? store.save(feature)
+        await setCurrentFeature(feature)
     }
 
     /// Drop the manual timer and go back to automatic attribution.

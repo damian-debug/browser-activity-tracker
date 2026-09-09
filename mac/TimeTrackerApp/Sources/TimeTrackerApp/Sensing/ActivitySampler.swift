@@ -22,6 +22,11 @@ final class ActivitySampler {
     private var cachedURL: String?
     private var urlPolicy = URLReadPolicy()
 
+    /// Branch lookups are a small file read, but they happen on every sample,
+    /// so remember the answer per repository directory.
+    private var branchCache: [String: String?] = [:]
+    private var branchCacheStamp = Date.distantPast
+
     var onChange: ((ActivitySnapshot) -> Void)?
 
     var isAccessibilityTrusted: Bool { AccessibilityReader.isTrusted }
@@ -92,8 +97,29 @@ final class ActivitySampler {
             windowTitle: details.title,
             url: url,
             documentPath: details.documentPath,
+            gitBranch: details.documentPath.flatMap(branch(forFileAt:)),
             capturedAt: Date()
         )
+    }
+
+    /// Checked-out branch for an open document, cached briefly.
+    ///
+    /// Only available for apps that expose a document path at all, which rules
+    /// out Electron editors like VS Code — they report a title but no document.
+    private func branch(forFileAt path: String) -> String? {
+        let directory = (path as NSString).deletingLastPathComponent
+
+        // Cheap, but not free, and branches change rarely. Re-check a minute at
+        // a time so switching branches is noticed without re-reading constantly.
+        if Date().timeIntervalSince(branchCacheStamp) > 60 {
+            branchCache.removeAll()
+            branchCacheStamp = Date()
+        }
+        if let cached = branchCache[directory] { return cached }
+
+        let found = WorkSignals.gitBranch(forFileAt: path)
+        branchCache[directory] = found
+        return found
     }
 
     /// A title change is an excellent proxy for "the tab changed", so it is what

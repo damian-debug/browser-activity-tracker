@@ -38,6 +38,7 @@ enum BackupDTO {
         var archived: Bool?
         var isFavourite: Bool?
         var sortOrder: Int?
+        var parentId: String?
         var createdAt: Int64?
         var updatedAt: Int64?
     }
@@ -72,6 +73,7 @@ enum BackupDTO {
         var appName: String?
         var windowTitle: String?
         var documentPath: String?
+        var gitBranch: String?
         var countedWhileAway: Bool?
         // v3 fields.
         var url: String?
@@ -82,6 +84,8 @@ enum BackupDTO {
         var detectedEntityName: String?
         var projectId: String?
         var projectName: String?
+        var featureId: String?
+        var featureName: String?
         var assignmentSource: String?
         var assignmentConfidence: Int?
         var matchedRuleId: String?

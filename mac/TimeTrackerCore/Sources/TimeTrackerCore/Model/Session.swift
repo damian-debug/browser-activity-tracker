@@ -18,6 +18,11 @@ public struct Session: Identifiable, Hashable, Sendable {
     public var appName: String
     public var windowTitle: String?
     public var documentPath: String?
+    /// Branch checked out in the document's repository at the time.
+    /// Stored because, unlike a ticket key, it cannot be recovered from the
+    /// URL or title afterwards — and it is the strongest signal there is for
+    /// which piece of code work this was.
+    public var gitBranch: String?
 
     // Browser fields. Nil for native-app sessions.
     public var url: String?
@@ -32,6 +37,15 @@ public struct Session: Identifiable, Hashable, Sendable {
     // ── What the time BELONGS to (attribution) ───────────────────────────
     public var projectId: String?
     public var projectName: String?
+
+    /// The feature within that project, when known.
+    ///
+    /// Additive on purpose: `projectId` still holds the top-level project, so
+    /// existing totals, rules and exports are unaffected and a feature is
+    /// always a refinement rather than a replacement.
+    public var featureId: String?
+    public var featureName: String?
+
     public var assignmentSource: AssignmentSource
     public var assignmentConfidence: Int
     public var matchedRuleId: String?
@@ -59,6 +73,7 @@ public struct Session: Identifiable, Hashable, Sendable {
         appName: String,
         windowTitle: String? = nil,
         documentPath: String? = nil,
+        gitBranch: String? = nil,
         url: String? = nil,
         domain: String? = nil,
         title: String = "",
@@ -67,6 +82,8 @@ public struct Session: Identifiable, Hashable, Sendable {
         detectedEntityName: String? = nil,
         projectId: String? = nil,
         projectName: String? = nil,
+        featureId: String? = nil,
+        featureName: String? = nil,
         assignmentSource: AssignmentSource = .unassigned,
         assignmentConfidence: Int = 0,
         matchedRuleId: String? = nil,
@@ -86,6 +103,7 @@ public struct Session: Identifiable, Hashable, Sendable {
         self.appName = appName
         self.windowTitle = windowTitle
         self.documentPath = documentPath
+        self.gitBranch = gitBranch
         self.url = url
         self.domain = domain
         self.title = title
@@ -94,6 +112,8 @@ public struct Session: Identifiable, Hashable, Sendable {
         self.detectedEntityName = detectedEntityName
         self.projectId = projectId
         self.projectName = projectName
+        self.featureId = featureId
+        self.featureName = featureName
         self.assignmentSource = assignmentSource
         self.assignmentConfidence = assignmentConfidence
         self.matchedRuleId = matchedRuleId

@@ -83,9 +83,21 @@ final class DashboardModel {
         }
     }
 
+    var topLevelProjects: [Project] { projects.topLevel }
+
+    func features(of projectId: String?) -> [Project] {
+        guard let projectId else { return [] }
+        return projects.features(of: projectId)
+    }
+
     func projectName(_ id: String?) -> String {
         guard let id else { return "Unassigned" }
         return projects.first { $0.id == id }?.name ?? "Unknown project"
+    }
+
+    func featureName(_ id: String?) -> String {
+        guard let id else { return "—" }
+        return projects.first { $0.id == id }?.name ?? "Unknown feature"
     }
 
     func tagNames(_ ids: [String]) -> String {
@@ -94,10 +106,31 @@ final class DashboardModel {
 
     // ── Editing ──────────────────────────────────────────────────────────
 
+    /// Set just the feature, leaving the project alone.
+    func assign(_ session: Session, toFeature feature: Project?) {
+        var updated = session
+        updated.featureId = feature?.id
+        updated.featureName = feature?.name
+        updated.reviewed = true
+        do {
+            try store.updateSession(updated)
+            try teachModel(previous: nil, updated: updated)
+            reload()
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
     func assign(_ session: Session, to project: Project?) {
         var updated = session
         updated.projectId = project?.id
         updated.projectName = project?.name
+        // A feature belongs to one project, so moving the project drops a
+        // feature that no longer applies rather than leaving it dangling.
+        if project?.id != session.projectId {
+            updated.featureId = nil
+            updated.featureName = nil
+        }
         updated.assignmentSource = project == nil ? .unassigned : .manualDashboard
         updated.assignmentConfidence = project == nil ? 0 : Confidence.manual
         updated.matchedRuleId = nil
@@ -148,6 +181,9 @@ final class DashboardModel {
         let index = LearnedIndex.default
 
         var observations = index.observations(for: updated, projectId: projectId)
+        if let featureId = updated.featureId {
+            observations += index.observations(for: updated, projectId: featureId)
+        }
 
         // If this overturned an earlier assignment, penalise the old answer as
         // well as rewarding the new one.

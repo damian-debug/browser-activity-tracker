@@ -15,9 +15,9 @@ public enum CSVExport {
 
     static let header = [
         "Date", "Start", "End", "Duration (seconds)",
-        "Project", "Client", "Tags", "Billable", "Reviewed",
+        "Project", "Feature", "Client", "Tags", "Billable", "Reviewed",
         "Source", "Confidence",
-        "App", "Window Title", "Document",
+        "App", "Window Title", "Document", "Branch",
         "Domain", "Service", "Entity ID", "Entity Name", "URL",
         "Counted While Away", "Notes",
     ]
@@ -51,6 +51,9 @@ public enum CSVExport {
                 session.projectId == nil
                     ? "Unassigned"
                     : (project?.name ?? session.projectName ?? "Unknown project"),
+                session.featureId == nil
+                    ? ""
+                    : (projectsById[session.featureId!]?.name ?? session.featureName ?? ""),
                 project?.clientName ?? "",
                 session.tagIds.map { tagsById[$0]?.name ?? $0 }.joined(separator: ", "),
                 session.billable ? "yes" : "no",
@@ -60,6 +63,7 @@ public enum CSVExport {
                 session.appName,
                 session.windowTitle ?? "",
                 session.documentPath ?? "",
+                session.gitBranch ?? "",
                 session.domain ?? "",
                 session.service ?? "",
                 session.detectedEntityId ?? "",

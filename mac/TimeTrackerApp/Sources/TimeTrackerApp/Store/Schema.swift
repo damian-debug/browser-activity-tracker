@@ -115,6 +115,33 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v3-features") { db in
+            // A feature is a project with a parent. Nullable, so every existing
+            // project is already a valid top-level one.
+            try db.alter(table: "project") { t in
+                t.add(column: "parentId", .text)
+            }
+            try db.create(indexOn: "project", columns: ["parentId"])
+
+            try db.alter(table: "session") { t in
+                t.add(column: "featureId", .text)
+                t.add(column: "featureName", .text)
+                t.add(column: "gitBranch", .text)
+            }
+            try db.create(indexOn: "session", columns: ["featureId"])
+        }
+
+        migrator.registerMigration("v4-clean-document-paths") { db in
+            // Browsers report kAXDocumentAttribute as the page address rather
+            // than a file, so early rows stored "https://..." and "chrome://..."
+            // as document paths. That duplicated the URL signal and produced
+            // nonsense folder features in the learned model. The reader now
+            // rejects them; this clears what was already written, along with any
+            // associations derived from them.
+            try db.execute(sql: "UPDATE session SET documentPath = NULL WHERE documentPath IS NOT NULL AND documentPath NOT LIKE '/%'")
+            try db.execute(sql: "DELETE FROM featureAssociation WHERE feature LIKE 'document:%' AND feature NOT LIKE 'document:/%'")
+        }
+
         return migrator
     }
 }

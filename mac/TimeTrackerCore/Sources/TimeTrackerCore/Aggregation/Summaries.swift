@@ -41,6 +41,18 @@ public struct ProjectTotal: Hashable, Sendable, Identifiable {
     public var id: String { projectId ?? "__unassigned__" }
 }
 
+/// Time on one feature, within its project.
+public struct FeatureTotal: Hashable, Sendable, Identifiable {
+    public var featureId: String
+    public var featureName: String
+    public var projectId: String?
+    public var projectName: String
+    public var totalSeconds: Int
+    public var billableSeconds: Int
+    public var sessionCount: Int
+    public var id: String { featureId }
+}
+
 public struct TagTotal: Hashable, Sendable, Identifiable {
     public var tagId: String
     public var tagName: String
@@ -63,11 +75,12 @@ public struct DashboardStats: Hashable, Sendable {
     public var domains: [DomainSummary]
     public var entities: [EntitySummary]
     public var projectTotals: [ProjectTotal]
+    public var featureTotals: [FeatureTotal]
     public var tagTotals: [TagTotal]
 
     public static let empty = DashboardStats(
         totalActiveSeconds: 0, billableSeconds: 0, unassignedSeconds: 0, awaySeconds: 0,
         needsReviewSeconds: 0, needsReviewCount: 0, sessionCount: 0,
-        apps: [], domains: [], entities: [], projectTotals: [], tagTotals: []
+        apps: [], domains: [], entities: [], projectTotals: [], featureTotals: [], tagTotals: []
     )
 }

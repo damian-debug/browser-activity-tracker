@@ -29,13 +29,14 @@ struct ProjectRecord: Codable, FetchableRecord, PersistableRecord {
     var archived: Bool
     var isFavourite: Bool
     var sortOrder: Int
+    var parentId: String?
     var createdAt: Double
     var updatedAt: Double
 
     init(_ p: Project) {
         id = p.id; name = p.name; clientName = p.clientName; color = p.color
         defaultBillable = p.defaultBillable; archived = p.archived
-        isFavourite = p.isFavourite; sortOrder = p.sortOrder
+        isFavourite = p.isFavourite; sortOrder = p.sortOrder; parentId = p.parentId
         createdAt = p.createdAt.timeIntervalSince1970
         updatedAt = p.updatedAt.timeIntervalSince1970
     }
@@ -44,7 +45,7 @@ struct ProjectRecord: Codable, FetchableRecord, PersistableRecord {
         Project(
             id: id, name: name, clientName: clientName, color: color,
             defaultBillable: defaultBillable, archived: archived,
-            isFavourite: isFavourite, sortOrder: sortOrder,
+            parentId: parentId, isFavourite: isFavourite, sortOrder: sortOrder,
             createdAt: Date(timeIntervalSince1970: createdAt),
             updatedAt: Date(timeIntervalSince1970: updatedAt)
         )
@@ -121,6 +122,7 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord {
     var appName: String
     var windowTitle: String?
     var documentPath: String?
+    var gitBranch: String?
     var url: String?
     var domain: String?
     var title: String
@@ -129,6 +131,8 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord {
     var detectedEntityName: String?
     var projectId: String?
     var projectName: String?
+    var featureId: String?
+    var featureName: String?
     var assignmentSource: String
     var assignmentConfidence: Int
     var matchedRuleId: String?
@@ -146,10 +150,12 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord {
     init(_ s: Session) {
         id = s.id; appBundleID = s.appBundleID; appName = s.appName
         windowTitle = s.windowTitle; documentPath = s.documentPath
+        gitBranch = s.gitBranch
         url = s.url; domain = s.domain; title = s.title
         service = s.service; detectedEntityId = s.detectedEntityId
         detectedEntityName = s.detectedEntityName
         projectId = s.projectId; projectName = s.projectName
+        featureId = s.featureId; featureName = s.featureName
         assignmentSource = s.assignmentSource.rawValue
         assignmentConfidence = s.assignmentConfidence
         matchedRuleId = s.matchedRuleId
@@ -166,11 +172,12 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord {
     var domainModel: Session {
         Session(
             id: id, appBundleID: appBundleID, appName: appName,
-            windowTitle: windowTitle, documentPath: documentPath,
+            windowTitle: windowTitle, documentPath: documentPath, gitBranch: gitBranch,
             url: url, domain: domain, title: title,
             service: service, detectedEntityId: detectedEntityId,
             detectedEntityName: detectedEntityName,
             projectId: projectId, projectName: projectName,
+            featureId: featureId, featureName: featureName,
             assignmentSource: AssignmentSource(rawValue: assignmentSource) ?? .unassigned,
             assignmentConfidence: assignmentConfidence,
             matchedRuleId: matchedRuleId,

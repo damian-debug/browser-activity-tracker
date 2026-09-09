@@ -33,6 +33,13 @@ public struct FigmaParser: URLParser {
             name = spaced.isEmpty ? nil : spaced
         }
 
-        return ParsedEntity(service: "figma", entityId: fileId, entityName: name)
+        // node-id pins the frame or page being viewed, which is a far better
+        // clue about the work than the file alone.
+        let node = URLish.queryValue(url, name: "node-id")
+
+        return ParsedEntity(
+            service: "figma", entityId: fileId, entityName: name,
+            subEntityId: node?.isEmpty == false ? node : nil
+        )
     }
 }

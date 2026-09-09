@@ -145,7 +145,7 @@ private extension Backup {
         .init(
             id: p.id, name: p.name, clientName: p.clientName, color: p.color,
             defaultBillable: p.defaultBillable, archived: p.archived,
-            isFavourite: p.isFavourite, sortOrder: p.sortOrder,
+            isFavourite: p.isFavourite, sortOrder: p.sortOrder, parentId: p.parentId,
             createdAt: p.createdAt.unixMillis, updatedAt: p.updatedAt.unixMillis
         )
     }
@@ -169,11 +169,12 @@ private extension Backup {
         .init(
             id: s.id, appBundleID: s.appBundleID, appName: s.appName,
             windowTitle: s.windowTitle, documentPath: s.documentPath,
-            countedWhileAway: s.countedWhileAway,
+            gitBranch: s.gitBranch, countedWhileAway: s.countedWhileAway,
             url: s.url, domain: s.domain, title: s.title,
             service: s.service, detectedEntityId: s.detectedEntityId,
             detectedEntityName: s.detectedEntityName,
             projectId: s.projectId, projectName: s.projectName,
+            featureId: s.featureId, featureName: s.featureName,
             assignmentSource: s.assignmentSource.rawValue,
             assignmentConfidence: s.assignmentConfidence,
             matchedRuleId: s.matchedRuleId, tagIds: s.tagIds, notes: s.notes,
@@ -200,6 +201,7 @@ private extension Backup {
         Project(
             id: p.id, name: p.name, clientName: p.clientName, color: p.color,
             defaultBillable: p.defaultBillable ?? false, archived: p.archived ?? false,
+            parentId: p.parentId,
             isFavourite: p.isFavourite ?? false, sortOrder: p.sortOrder ?? 0,
             createdAt: Date(unixMillis: p.createdAt ?? 0),
             updatedAt: Date(unixMillis: p.updatedAt ?? 0)
@@ -233,10 +235,12 @@ private extension Backup {
             appName: s.appName ?? importedBrowserAppName,
             windowTitle: s.windowTitle,
             documentPath: s.documentPath,
+            gitBranch: s.gitBranch,
             url: s.url, domain: s.domain, title: s.title ?? "",
             service: s.service, detectedEntityId: s.detectedEntityId,
             detectedEntityName: s.detectedEntityName,
             projectId: s.projectId, projectName: s.projectName,
+            featureId: s.featureId, featureName: s.featureName,
             assignmentSource: s.assignmentSource
                 .flatMap(AssignmentSource.init(rawValue:)) ?? .unassigned,
             assignmentConfidence: s.assignmentConfidence ?? 0,
