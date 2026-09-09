@@ -3,7 +3,7 @@ import Foundation
 /// Why tracking is currently suspended. A bitfield, because reasons overlap:
 /// going idle while the screen is also locked must not resume early when only
 /// one of them clears.
-public struct PauseReasons: OptionSet, Hashable, Sendable {
+public struct PauseReasons: OptionSet, Hashable, Sendable, Codable {
     public let rawValue: Int
     public init(rawValue: Int) { self.rawValue = rawValue }
 
@@ -19,7 +19,7 @@ public struct PauseReasons: OptionSet, Hashable, Sendable {
 /// persistence dance around this is gone — a native process isn't killed every
 /// 30 seconds — but the accrual arithmetic is unchanged, because it was correct
 /// and well covered.
-public struct ActiveSession: Hashable, Sendable {
+public struct ActiveSession: Hashable, Sendable, Codable {
     public let id: String
     /// Label for display. Recomputed as richer signals arrive; continuity is
     /// decided by `ActivityIdentity`, never by this.
@@ -40,6 +40,31 @@ public struct ActiveSession: Hashable, Sendable {
     /// meetings and phone calls still accrue. Deliberately opt-in: it breaks
     /// the accuracy-first rule, so sessions recorded this way are marked.
     public var ignoresIdle: Bool
+
+    /// Full-fidelity initialiser, used when restoring a persisted session.
+    public init(
+        id: String,
+        target: TrackingTarget,
+        snapshot: ActivitySnapshot,
+        assignment: Assignment,
+        startTime: Date,
+        accumulatedSeconds: Int,
+        segmentStart: Date?,
+        pauseReasons: PauseReasons,
+        lastCheckpoint: Date,
+        ignoresIdle: Bool
+    ) {
+        self.id = id
+        self.target = target
+        self.snapshot = snapshot
+        self.assignment = assignment
+        self.startTime = startTime
+        self.accumulatedSeconds = accumulatedSeconds
+        self.segmentStart = segmentStart
+        self.pauseReasons = pauseReasons
+        self.lastCheckpoint = lastCheckpoint
+        self.ignoresIdle = ignoresIdle
+    }
 
     public init(
         id: String = UUID().uuidString,

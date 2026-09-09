@@ -7,3 +7,6 @@ Package.resolved
 *.xcuserdatad/
 xcuserdata/
 DerivedData/
+
+# Assembled .app bundles
+build/

@@ -2,7 +2,7 @@ import Foundation
 
 // Raw values match the Chrome extension's strings exactly so backup files
 // round-trip between the two implementations.
-public enum ProjectRuleType: String, CaseIterable, Hashable, Sendable {
+public enum ProjectRuleType: String, CaseIterable, Hashable, Sendable, Codable {
     case domainEquals = "domain_equals"
     case urlContains = "url_contains"
     case urlStartsWith = "url_starts_with"

@@ -341,3 +341,93 @@ struct CoordinatorManualTests {
         #expect(status.projectId == "p1")
     }
 }
+
+@Suite("Crash and quit resilience")
+struct CoordinatorRestoreTests {
+    @Test("a session in progress is saved on a clean quit")
+    func shutdownSavesSession() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.shutdown(now: at(300))
+
+        #expect(await deps.persisted.first?.durationSeconds == 300)
+    }
+
+    @Test("a session left behind by a crash is picked back up")
+    func restoresRecentSession() async {
+        let deps = FakeDependencies()
+        var orphan = ActiveSession(snapshot: browserSnapshot(), now: base)
+        orphan.checkpoint(at: at(120))
+
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        // Relaunched a few seconds later.
+        await coordinator.restore(orphan, now: at(140))
+
+        #expect(await deps.persisted.isEmpty, "a recent session should resume, not close")
+        #expect(await coordinator.status(now: at(140)).elapsedSeconds == 140)
+    }
+
+    @Test("a stale session is closed at its last checkpoint, not credited to now")
+    func closesStaleSession() async {
+        let deps = FakeDependencies()
+        var orphan = ActiveSession(snapshot: browserSnapshot(), now: base)
+        orphan.checkpoint(at: at(120))
+
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        // Relaunched the next morning: the machine was off, not in use.
+        await coordinator.restore(orphan, now: at(50_000))
+
+        let saved = try! #require(await deps.persisted.first)
+        #expect(saved.durationSeconds == 120, "hours of downtime must not be billed")
+        #expect(await coordinator.status(now: at(50_000)).isTracking == false)
+    }
+
+    @Test("a restored session keeps its identity, attribution and away mode")
+    func restorePreservesState() async {
+        let deps = FakeDependencies()
+        var orphan = ActiveSession(
+            snapshot: browserSnapshot(),
+            assignment: Assignment(
+                projectId: "p1", projectName: "Acme Corp",
+                assignmentSource: .activeProjectOverride, assignmentConfidence: 100
+            ),
+            ignoresIdle: true,
+            now: base
+        )
+        orphan.checkpoint(at: at(60))
+
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.restore(orphan, now: at(80))
+
+        let status = await coordinator.status(now: at(80))
+        #expect(status.projectId == "p1")
+        #expect(status.projectName == "Acme Corp")
+
+        // Away mode must survive, or a restored meeting timer would stop counting.
+        await coordinator.pause(.idle, at: at(90))
+        #expect(await coordinator.status(now: at(120)).isPaused == false)
+    }
+
+    @Test("a persisted session survives an encode/decode round trip")
+    func sessionIsCodable() throws {
+        var original = ActiveSession(
+            snapshot: nativeSnapshot(title: "main.swift", documentPath: "/p/main.swift"),
+            assignment: Assignment(projectId: "p1", assignmentSource: .autoRule, assignmentConfidence: 85),
+            ignoresIdle: true,
+            now: base
+        )
+        original.pause(.screenLocked, at: at(30))
+
+        let data = try JSONEncoder().encode(original)
+        let restored = try JSONDecoder().decode(ActiveSession.self, from: data)
+
+        #expect(restored.id == original.id)
+        #expect(restored.accumulatedSeconds == original.accumulatedSeconds)
+        #expect(restored.pauseReasons == original.pauseReasons)
+        #expect(restored.ignoresIdle)
+        #expect(restored.snapshot.documentPath == "/p/main.swift")
+        #expect(restored.duration(at: at(120)) == original.duration(at: at(120)))
+    }
+}

@@ -1,7 +1,7 @@
 import Foundation
 
 /// How widely a manual project choice applies.
-public enum OverrideScope: String, CaseIterable, Hashable, Sendable {
+public enum OverrideScope: String, CaseIterable, Hashable, Sendable, Codable {
     /// Everything, regardless of app. This is also what a manual timer uses.
     case global
     /// Just the window/document that was focused when the choice was made.
@@ -10,14 +10,14 @@ public enum OverrideScope: String, CaseIterable, Hashable, Sendable {
     case currentApp
 }
 
-public enum OverrideExpiry: String, CaseIterable, Hashable, Sendable {
+public enum OverrideExpiry: String, CaseIterable, Hashable, Sendable, Codable {
     case manual
     case thirtyMinutes
     case endOfDay
 }
 
 /// A manual "track this as X" instruction that outlives a single session.
-public struct ActiveProjectOverride: Hashable, Sendable {
+public struct ActiveProjectOverride: Hashable, Sendable, Codable {
     public var projectId: String
     public var tagIds: [String]
     public var billable: Bool?

@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Only `bundleID`/`appName` are always populated; the rest depend on which
 /// permissions have been granted, so every consumer must degrade gracefully.
-public struct ActivitySnapshot: Hashable, Sendable {
+public struct ActivitySnapshot: Hashable, Sendable, Codable {
     public var bundleID: String
     public var appName: String
     public var windowTitle: String?      // Accessibility

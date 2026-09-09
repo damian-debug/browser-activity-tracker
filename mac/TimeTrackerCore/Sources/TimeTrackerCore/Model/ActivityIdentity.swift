@@ -12,12 +12,26 @@ import Foundation
 /// URL read fails once. Treating "I can't see the title right now" the same as
 /// "the title changed" would fragment one hour of work into a hundred slivers,
 /// which is the exact failure this type exists to prevent.
-public struct ActivityIdentity: Hashable, Sendable {
+public struct ActivityIdentity: Hashable, Sendable, Codable {
     public let bundleID: String
     public let entityKey: String?
     public let documentPath: String?
     public let url: String?
     public let windowTitle: String?
+
+    public init(
+        bundleID: String,
+        entityKey: String? = nil,
+        documentPath: String? = nil,
+        url: String? = nil,
+        windowTitle: String? = nil
+    ) {
+        self.bundleID = bundleID
+        self.entityKey = entityKey
+        self.documentPath = documentPath
+        self.url = url
+        self.windowTitle = windowTitle
+    }
 
     public init(_ snapshot: ActivitySnapshot) {
         self.bundleID = snapshot.bundleID

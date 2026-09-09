@@ -30,6 +30,33 @@ public actor ActivityCoordinator {
 
     public var activeSession: ActiveSession? { current }
 
+    /// Restore an in-flight session left behind by a previous run.
+    ///
+    /// A native process isn't killed every 30 seconds the way an MV3 service
+    /// worker is, but it does still crash, get force-quit, and go down with a
+    /// restart. Losing the last stretch of work to any of those is exactly the
+    /// failure a time tracker cannot have, so the same wall-clock reasoning the
+    /// extension used on wake applies here on launch.
+    public func restore(_ session: ActiveSession, now: Date = Date()) async {
+        switch session.decideGap(now: now, settings: settings) {
+        case .credit:
+            // The app was only briefly gone; carry on where we left off.
+            current = session
+        case .finalizeAtLastCheckpoint(let checkpoint):
+            // Too long to be plausible work. Bank what was verified and stop.
+            current = nil
+            if let finished = session.finalized(at: checkpoint, settings: settings, now: now) {
+                await dependencies.persist(finished)
+            }
+        }
+    }
+
+    /// Close out cleanly on quit, so the session in progress is saved rather
+    /// than discarded.
+    public func shutdown(now: Date = Date()) async {
+        await endSession(at: now)
+    }
+
     public func status(now: Date) -> TrackingStatus {
         guard let current else { return .idle }
         return TrackingStatus(

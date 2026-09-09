@@ -1,6 +1,6 @@
 import Foundation
 
-public enum AssignmentSource: String, CaseIterable, Hashable, Sendable {
+public enum AssignmentSource: String, CaseIterable, Hashable, Sendable, Codable {
     case autoRule = "auto_rule"
     case manualPopup = "manual_popup"
     case manualDashboard = "manual_dashboard"
@@ -17,7 +17,7 @@ public enum AssignmentSource: String, CaseIterable, Hashable, Sendable {
 }
 
 /// The project assignment attached to a session, live or stored.
-public struct Assignment: Hashable, Sendable {
+public struct Assignment: Hashable, Sendable, Codable {
     public var projectId: String?
     public var projectName: String?
     public var assignmentSource: AssignmentSource

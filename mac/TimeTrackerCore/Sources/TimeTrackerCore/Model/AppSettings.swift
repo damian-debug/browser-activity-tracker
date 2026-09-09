@@ -1,6 +1,6 @@
 import Foundation
 
-public struct AppSettings: Hashable, Sendable {
+public struct AppSettings: Hashable, Sendable, Codable {
     /// Stop counting after this much inactivity.
     public var idleThresholdSeconds: Int
 

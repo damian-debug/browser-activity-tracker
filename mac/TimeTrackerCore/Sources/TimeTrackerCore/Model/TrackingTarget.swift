@@ -11,7 +11,7 @@ import Foundation
 ///
 /// Cases are ordered strongest (most specific) to weakest; resolution picks the
 /// strongest identity the available signals support.
-public enum TrackingTarget: Hashable, Sendable {
+public enum TrackingTarget: Hashable, Sendable, Codable {
     case entity(service: String, id: String)
     case document(bundleID: String, path: String)
     case webPage(url: String)
