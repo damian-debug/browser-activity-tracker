@@ -191,3 +191,29 @@ struct AppStateRecord: Codable, FetchableRecord, PersistableRecord {
     var key: String
     var value: String
 }
+
+struct FeatureAssociationRecord: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "featureAssociation"
+
+    var feature: String
+    var projectId: String
+    var mass: Double
+    var observations: Int
+    var lastUpdated: Double
+
+    init(_ a: FeatureAssociation) {
+        feature = a.feature
+        projectId = a.projectId
+        mass = a.mass
+        observations = a.observations
+        lastUpdated = a.lastUpdated.timeIntervalSince1970
+    }
+
+    var domain: FeatureAssociation {
+        FeatureAssociation(
+            feature: feature, projectId: projectId, mass: mass,
+            observations: observations,
+            lastUpdated: Date(timeIntervalSince1970: lastUpdated)
+        )
+    }
+}

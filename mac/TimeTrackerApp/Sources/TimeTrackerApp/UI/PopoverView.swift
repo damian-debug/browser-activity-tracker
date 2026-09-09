@@ -66,18 +66,48 @@ struct PopoverView: View {
                     Circle()
                         .fill(model.status.projectId == nil ? Color.secondary : Color.accentColor)
                         .frame(width: 7, height: 7)
-                    Text(model.status.projectName ?? "Unassigned")
-                        .font(.caption)
-                        .foregroundStyle(model.status.projectId == nil ? .secondary : .primary)
-                    if let confidence = model.status.assignmentConfidence, confidence > 0 {
-                        Text("· \(confidence)%").font(.caption2).foregroundStyle(.tertiary)
+
+                    // The project is a menu, so correcting a wrong guess is one
+                    // click from where the guess is shown — which is also where
+                    // the model learns the most.
+                    Menu {
+                        Button("Unassigned") { Task { await model.assignCurrentSession(to: nil) } }
+                        Divider()
+                        ForEach(model.allProjects) { project in
+                            Button(project.name) {
+                                Task { await model.assignCurrentSession(to: project) }
+                            }
+                        }
+                    } label: {
+                        Text(model.status.projectName ?? "Unassigned")
+                            .font(.caption)
+                            .foregroundStyle(model.status.projectId == nil ? .secondary : .primary)
                     }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+
+                    if let source = model.status.assignmentSource, source == .suggested {
+                        Text("suggested")
+                            .font(.caption2)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.secondary)
+                    }
+
                     Spacer()
                     if model.activeOverride != nil {
                         Button("Stop timer") { Task { await model.stopTimer() } }
                             .buttonStyle(.borderless)
                             .font(.caption)
                     }
+                }
+
+                // An automatic assignment must always be able to justify itself.
+                if let explanation = model.suggestionExplanation {
+                    Text(explanation)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 Label("Nothing being tracked", systemImage: "moon.zzz")

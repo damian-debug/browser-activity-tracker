@@ -27,6 +27,10 @@ final class AppModel {
 
     /// What the app can currently see. Drives the permission prompts in the UI
     /// and explains why attribution may be coarser than expected.
+    /// Why the current session was attributed as it was, when that came from
+    /// the learned model. Nil when a rule, an override or nothing decided it.
+    private(set) var suggestionExplanation: String?
+
     private(set) var accessibilityTrusted = false
     private(set) var deniedBrowsers: [String] = []
     private(set) var unsupportedBrowsers: [String] = []
@@ -159,6 +163,16 @@ final class AppModel {
         } catch {
             lastError = error.localizedDescription
         }
+
+        // After the projects load, so the explanation names the current title
+        // rather than one cached from the previous refresh.
+        if let suggestion = await coordinator.suggestionForCurrentSession(),
+           let name = allProjects.first(where: { $0.id == suggestion.projectId })?.name
+                        ?? status.projectName {
+            suggestionExplanation = suggestion.explanation(projectName: name)
+        } else {
+            suggestionExplanation = nil
+        }
     }
 
     /// Close out cleanly on quit so the session in progress is banked.
@@ -183,6 +197,27 @@ final class AppModel {
         )
         try? store.saveOverride(override)
         await coordinator.restartCurrentSession(ignoringIdle: countingWhileAway)
+        await refresh()
+    }
+
+    /// Say what the current activity really is.
+    ///
+    /// Distinct from starting a timer: this corrects just this session, and
+    /// when it overrules a suggestion the model is told both that it was wrong
+    /// and what the right answer was.
+    func assignCurrentSession(to project: Project?) async {
+        let assignment: Assignment
+        if let project {
+            assignment = Assignment(
+                projectId: project.id, projectName: project.name,
+                assignmentSource: .manualPopup,
+                assignmentConfidence: Confidence.manual,
+                billable: project.defaultBillable
+            )
+        } else {
+            assignment = .unassigned
+        }
+        await coordinator.reassignCurrentSession(to: assignment)
         await refresh()
     }
 

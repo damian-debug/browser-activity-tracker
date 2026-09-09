@@ -20,13 +20,27 @@ public struct AppSettings: Hashable, Sendable, Codable {
     /// rather than the user having worked, and is not credited.
     public var maximumCreditedGapSeconds: Int
 
+    /// Below this, a learned suggestion is discarded and the time is left
+    /// unassigned for you to decide.
+    ///
+    /// Between this and `reviewConfidenceThreshold`, a suggestion is applied
+    /// but flagged in Review Needed; above the review threshold it is applied
+    /// quietly. An unfilled gap is a minor annoyance; a wrong invoice is not,
+    /// so this errs high.
+    public var learnedMinimumConfidence: Int
+
+    /// Whether to suggest projects from past decisions at all.
+    public var learningEnabled: Bool
+
     public init(
         idleThresholdSeconds: Int = 60,
         reviewConfidenceThreshold: Int = 70,
         excludedDomains: [String] = ["localhost", "127.0.0.1", "0.0.0.0"],
         excludedAppBundleIDs: [String] = [],
         minimumSessionSeconds: Int = 2,
-        maximumCreditedGapSeconds: Int = 150
+        maximumCreditedGapSeconds: Int = 150,
+        learnedMinimumConfidence: Int = 50,
+        learningEnabled: Bool = true
     ) {
         self.idleThresholdSeconds = idleThresholdSeconds
         self.reviewConfidenceThreshold = reviewConfidenceThreshold
@@ -34,6 +48,8 @@ public struct AppSettings: Hashable, Sendable, Codable {
         self.excludedAppBundleIDs = excludedAppBundleIDs
         self.minimumSessionSeconds = minimumSessionSeconds
         self.maximumCreditedGapSeconds = maximumCreditedGapSeconds
+        self.learnedMinimumConfidence = learnedMinimumConfidence
+        self.learningEnabled = learningEnabled
     }
 
     public static let `default` = AppSettings()

@@ -14,15 +14,28 @@ public actor ActivityCoordinator {
     private let dependencies: any TrackingDependencies
     private var settings: AppSettings
     private var current: ActiveSession?
+    private let learned: LearnedIndex
+
+    /// Explanation for the current session's learned suggestion, if that is
+    /// where its project came from. Shown in the UI so an automatic assignment
+    /// can always be questioned.
+    private(set) var currentSuggestion: LearnedSuggestion?
 
     /// Reasons that apply to the *tracker*, not to one session, so they survive
     /// a session change (going idle then switching apps should stay paused).
     private var globalPauseReasons: PauseReasons = []
 
-    public init(dependencies: any TrackingDependencies, settings: AppSettings = .default) {
+    public init(
+        dependencies: any TrackingDependencies,
+        settings: AppSettings = .default,
+        learned: LearnedIndex = .default
+    ) {
         self.dependencies = dependencies
         self.settings = settings
+        self.learned = learned
     }
+
+    public func suggestionForCurrentSession() -> LearnedSuggestion? { currentSuggestion }
 
     public func updateSettings(_ settings: AppSettings) {
         self.settings = settings
@@ -99,7 +112,22 @@ public actor ActivityCoordinator {
     private func startSession(_ snapshot: ActivitySnapshot, now: Date) async {
         let override = await dependencies.currentOverride()
         let rules = await dependencies.enabledRules()
-        let result = SessionAssigner.assign(snapshot, rules: rules, override: override, now: now)
+        var result = SessionAssigner.assign(snapshot, rules: rules, override: override, now: now)
+
+        // Only fall back to what has been learned when nothing explicit
+        // matched. A rule the user wrote always wins over a pattern inferred
+        // from their history.
+        currentSuggestion = nil
+        if result.projectId == nil, settings.learningEnabled {
+            if let suggestion = await suggest(for: snapshot, now: now) {
+                currentSuggestion = suggestion
+                result = RuleEngineResult(
+                    projectId: suggestion.projectId,
+                    assignmentSource: .suggested,
+                    assignmentConfidence: suggestion.confidence
+                )
+            }
+        }
 
         var projectName: String?
         var billable = result.billable ?? false
@@ -130,12 +158,62 @@ public actor ActivityCoordinator {
         )
     }
 
+    /// Ask the model what this activity probably is.
+    ///
+    /// A suggestion below the floor is discarded outright rather than applied
+    /// weakly: leaving time unassigned costs a moment of the user's attention,
+    /// while a confidently wrong assignment quietly corrupts an invoice.
+    private func suggest(for snapshot: ActivitySnapshot, now: Date) async -> LearnedSuggestion? {
+        let features = FeatureExtractor.features(for: snapshot)
+        guard !features.isEmpty else { return nil }
+
+        let associations = await dependencies.associations(forFeatureKeys: features.map(\.key))
+        guard !associations.isEmpty else { return nil }
+
+        let eligible = await dependencies.eligibleProjectIds()
+        guard !eligible.isEmpty else { return nil }
+
+        guard let suggestion = learned.suggest(
+            features: features, associations: associations,
+            eligibleProjectIds: eligible, now: now
+        ) else { return nil }
+
+        return suggestion.confidence >= settings.learnedMinimumConfidence ? suggestion : nil
+    }
+
     /// Close the current session, persisting it if it is long enough to matter.
     public func endSession(at date: Date = Date()) async {
         guard let session = current else { return }
         current = nil
+        currentSuggestion = nil
         if let finished = session.finalized(at: date, settings: settings, now: date) {
             await dependencies.persist(finished)
+            await learn(from: finished)
+        }
+    }
+
+    /// Feed a finished session back into the model.
+    ///
+    /// Deliberately does NOT learn from its own suggestions: a model that
+    /// treats its own output as evidence converges on whatever it guessed
+    /// first, and grows more certain the longer it is wrong. Only decisions
+    /// carrying real human intent are recorded — a manual choice, a timer the
+    /// user started, or a rule they wrote.
+    private func learn(from session: Session) async {
+        guard settings.learningEnabled,
+              let projectId = session.projectId,
+              Self.isTrustworthyEvidence(session.assignmentSource)
+        else { return }
+
+        await dependencies.record(learned.observations(for: session, projectId: projectId))
+    }
+
+    static func isTrustworthyEvidence(_ source: AssignmentSource) -> Bool {
+        switch source {
+        case .manualPopup, .manualDashboard, .activeProjectOverride, .autoRule:
+            return true
+        case .suggested, .unassigned:
+            return false
         }
     }
 
@@ -185,8 +263,46 @@ public actor ActivityCoordinator {
 
     /// Re-attribute the in-flight session without disturbing its clock. Used
     /// when the user picks a project for the thing they're already doing.
-    public func reassignCurrentSession(to assignment: Assignment) {
+    ///
+    /// If this overrules a suggestion, that is the most valuable signal the
+    /// model ever gets: it is told both that it was wrong and what the right
+    /// answer was, for exactly this activity.
+    public func reassignCurrentSession(to assignment: Assignment, now: Date = Date()) async {
+        guard let session = current else { return }
+        let previous = session.assignment
         current?.assignment = assignment
+
+        guard settings.learningEnabled else { return }
+
+        let corrected = previous.assignmentSource == .suggested
+            && previous.projectId != nil
+            && previous.projectId != assignment.projectId
+
+        guard corrected, let wrongProjectId = previous.projectId else { return }
+
+        currentSuggestion = nil
+        let features = FeatureExtractor.features(for: session.snapshot)
+        let elapsed = session.duration(at: now)
+
+        var observations = learned.observations(
+            features: features, projectId: wrongProjectId,
+            durationSeconds: elapsed, at: now
+        ).map { observation -> FeatureObservation in
+            var correction = observation
+            correction.weight = -observation.weight
+            return correction
+        }
+
+        // The replacement is recorded straight away rather than waiting for the
+        // session to end, so the very next activity already benefits.
+        if let rightProjectId = assignment.projectId, assignment.assignmentSource.isManual {
+            observations += learned.observations(
+                features: features, projectId: rightProjectId,
+                durationSeconds: elapsed, at: now
+            )
+        }
+
+        await dependencies.record(observations)
     }
 
     /// Restart tracking under a new assignment, splitting time exactly at this

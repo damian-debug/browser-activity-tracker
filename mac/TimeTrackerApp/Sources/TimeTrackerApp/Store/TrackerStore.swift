@@ -55,6 +55,9 @@ public final class TrackerStore: Sendable {
             // Sessions deliberately survive: deleting a project must not delete
             // the record of time already spent on it.
             try db.execute(sql: "UPDATE session SET projectId = NULL WHERE projectId = ?", arguments: [id])
+            // What was learned about it must go, though, or it would keep being
+            // suggested from beyond the grave.
+            try FeatureAssociationRecord.filter(Column("projectId") == id).deleteAll(db)
             try ProjectRecord.deleteOne(db, key: id)
         }
     }
@@ -225,6 +228,89 @@ public final class TrackerStore: Sendable {
         }
     }
 
+    // ── Learning ─────────────────────────────────────────────────────────
+
+    private let learned = LearnedIndex.default
+
+    public func loadAssociations(forFeatureKeys keys: [String]) throws -> [FeatureAssociation] {
+        guard !keys.isEmpty else { return [] }
+        return try dbQueue.read { db in
+            try FeatureAssociationRecord
+                .filter(keys.contains(Column("feature")))
+                .fetchAll(db)
+                .map(\.domain)
+        }
+    }
+
+    /// Fold observations into the model.
+    ///
+    /// Each observation carries its own timestamp and is aged accordingly, so
+    /// replaying history — a restored backup, a rule applied to old sessions —
+    /// does not pass year-old evidence off as fresh. Decay needs no background
+    /// sweep: it happens wherever a row is touched.
+    public func recordObservations(_ observations: [FeatureObservation]) throws {
+        guard !observations.isEmpty else { return }
+        try dbQueue.write { db in
+            for observation in observations {
+                let existing = try FeatureAssociationRecord
+                    .filter(Column("feature") == observation.feature)
+                    .filter(Column("projectId") == observation.projectId)
+                    .fetchOne(db)?.domain
+
+                let base = existing ?? FeatureAssociation(
+                    feature: observation.feature, projectId: observation.projectId,
+                    mass: 0, observations: 0, lastUpdated: observation.at
+                )
+                let updated = learned.updated(base, adding: observation.weight, at: observation.at)
+
+                // A row that has decayed to nothing is noise; drop it rather
+                // than carrying it forever.
+                if updated.mass < 0.01 {
+                    if existing != nil {
+                        try FeatureAssociationRecord
+                            .filter(Column("feature") == observation.feature)
+                            .filter(Column("projectId") == observation.projectId)
+                            .deleteAll(db)
+                    }
+                } else {
+                    try FeatureAssociationRecord(updated).save(db)
+                }
+            }
+        }
+    }
+
+    /// Remove associations that have decayed below usefulness.
+    ///
+    /// Rows are only aged when touched, so a feature never seen again would
+    /// otherwise sit at its last value forever. Returns how many were removed.
+    @discardableResult
+    public func compactLearning(now: Date = Date(), floor: Double = 0.01) throws -> Int {
+        try dbQueue.write { db in
+            let all = try FeatureAssociationRecord.fetchAll(db)
+            var removed = 0
+            for record in all where learned.decayedMass(record.domain, now: now) < floor {
+                try FeatureAssociationRecord
+                    .filter(Column("feature") == record.feature)
+                    .filter(Column("projectId") == record.projectId)
+                    .deleteAll(db)
+                removed += 1
+            }
+            return removed
+        }
+    }
+
+    /// Forget everything learned about a project. Used when it is deleted, so
+    /// it can never be suggested again.
+    public func forgetLearning(projectId: String) throws {
+        _ = try dbQueue.write { db in
+            try FeatureAssociationRecord.filter(Column("projectId") == projectId).deleteAll(db)
+        }
+    }
+
+    public func learningRowCount() throws -> Int {
+        try dbQueue.read { try FeatureAssociationRecord.fetchCount($0) }
+    }
+
     // ── Backup ───────────────────────────────────────────────────────────
 
     public func backupContents() throws -> Backup.Contents {
@@ -279,5 +365,17 @@ extension TrackerStore: TrackingDependencies {
 
     public func persist(_ session: Session) async {
         try? save(session)
+    }
+
+    public func associations(forFeatureKeys keys: [String]) async -> [FeatureAssociation] {
+        (try? loadAssociations(forFeatureKeys: keys)) ?? []
+    }
+
+    public func eligibleProjectIds() async -> Set<String> {
+        Set(((try? projects()) ?? []).map(\.id))
+    }
+
+    public func record(_ observations: [FeatureObservation]) async {
+        try? recordObservations(observations)
     }
 }

@@ -100,6 +100,21 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v2-learning") { db in
+            try db.create(table: "featureAssociation") { t in
+                // Composite key: one row per (feature, project) pair. Its
+                // index is also the lookup path — suggesting only ever reads
+                // the handful of features present in the current activity,
+                // never a scan of everything ever learned.
+                t.column("feature", .text).notNull()
+                t.column("projectId", .text).notNull()
+                t.column("mass", .double).notNull()
+                t.column("observations", .integer).notNull()
+                t.column("lastUpdated", .double).notNull()
+                t.primaryKey(["feature", "projectId"])
+            }
+        }
+
         return migrator
     }
 }

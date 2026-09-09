@@ -11,8 +11,11 @@ actor FakeDependencies: TrackingDependencies {
     var rules: [ProjectRule] = []
     var projects: [String: Project] = [:]
     var override: ActiveProjectOverride?
+    var associations: [FeatureAssociation] = []
+    var eligible: Set<String> = ["acme", "internal", "rule-project", "override-project", "p1"]
     private(set) var persisted: [Session] = []
     private(set) var clearOverrideCalls = 0
+    private(set) var recorded: [FeatureObservation] = []
 
     init(rules: [ProjectRule] = [], projects: [Project] = [], override: ActiveProjectOverride? = nil) {
         self.rules = rules
@@ -29,7 +32,15 @@ actor FakeDependencies: TrackingDependencies {
     }
     func persist(_ session: Session) async { persisted.append(session) }
 
+    func associations(forFeatureKeys keys: [String]) async -> [FeatureAssociation] {
+        let wanted = Set(keys)
+        return associations.filter { wanted.contains($0.feature) }
+    }
+    func eligibleProjectIds() async -> Set<String> { eligible }
+    func record(_ observations: [FeatureObservation]) async { recorded.append(contentsOf: observations) }
+
     func setOverride(_ value: ActiveProjectOverride?) { override = value }
+    func setAssociations(_ value: [FeatureAssociation]) { associations = value }
 }
 
 private let base = Date(unixMillis: 1_700_000_000_000)
@@ -429,5 +440,273 @@ struct CoordinatorRestoreTests {
         #expect(restored.ignoresIdle)
         #expect(restored.snapshot.documentPath == "/p/main.swift")
         #expect(restored.duration(at: at(120)) == original.duration(at: at(120)))
+    }
+}
+
+@Suite("Learned attribution")
+struct CoordinatorLearningTests {
+    /// Strong, consistent history for the Bubble app in `browserSnapshot()`.
+    func establishedHistory(project: String = "acme") -> [FeatureAssociation] {
+        [
+            FeatureAssociation(feature: "entity:bubble::sampleapp", projectId: project,
+                               mass: 25, observations: 25, lastUpdated: base),
+            FeatureAssociation(feature: "host:bubble.io", projectId: project,
+                               mass: 25, observations: 25, lastUpdated: base),
+            FeatureAssociation(feature: "app:\(chromeBundleID)", projectId: project,
+                               mass: 25, observations: 25, lastUpdated: base),
+        ]
+    }
+
+    @Test("with no rule matching, an established pattern is suggested")
+    func suggestsFromHistory() async {
+        let deps = FakeDependencies(projects: [Project(id: "acme", name: "Acme Corp")])
+        await deps.setAssociations(establishedHistory())
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+
+        let status = await coordinator.status(now: base)
+        #expect(status.projectId == "acme")
+        #expect(status.assignmentSource == .suggested)
+        #expect(status.projectName == "Acme Corp")
+    }
+
+    @Test("an explicit rule always beats a learned pattern")
+    func ruleBeatsLearning() async {
+        let rule = makeRule(type: .domainEquals, value: "bubble.io", projectId: "rule-project")
+        let deps = FakeDependencies(
+            rules: [rule], projects: [Project(id: "rule-project", name: "By Rule")]
+        )
+        await deps.setAssociations(establishedHistory())
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+
+        let status = await coordinator.status(now: base)
+        #expect(status.projectId == "rule-project")
+        #expect(status.assignmentSource == .autoRule)
+    }
+
+    @Test("a manual override beats everything")
+    func overrideBeatsLearning() async {
+        let deps = FakeDependencies(override: ActiveProjectOverride(
+            projectId: "override-project", scope: .global, expiry: .manual, startedAt: base
+        ))
+        await deps.setAssociations(establishedHistory())
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        #expect(await coordinator.status(now: base).projectId == "override-project")
+    }
+
+    @Test("a weak pattern is discarded rather than applied hesitantly")
+    func weakPatternLeftUnassigned() async {
+        let deps = FakeDependencies()
+        // One sighting of one title word: nowhere near enough.
+        await deps.setAssociations([
+            FeatureAssociation(feature: "title:editor", projectId: "acme",
+                               mass: 1, observations: 1, lastUpdated: base)
+        ])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+
+        let status = await coordinator.status(now: base)
+        #expect(status.projectId == nil, "thin evidence must leave time unassigned")
+        #expect(status.assignmentSource == .unassigned)
+    }
+
+    @Test("learning can be turned off entirely")
+    func learningDisabled() async {
+        let deps = FakeDependencies(projects: [Project(id: "acme", name: "Acme Corp")])
+        await deps.setAssociations(establishedHistory())
+        let coordinator = ActivityCoordinator(
+            dependencies: deps, settings: AppSettings(learningEnabled: false)
+        )
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        #expect(await coordinator.status(now: base).projectId == nil)
+    }
+
+    @Test("a suggestion carries the evidence behind it")
+    func suggestionIsExplainable() async {
+        let deps = FakeDependencies(projects: [Project(id: "acme", name: "Acme Corp")])
+        await deps.setAssociations(establishedHistory())
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+
+        let suggestion = try! #require(await coordinator.suggestionForCurrentSession())
+        #expect(suggestion.projectId == "acme")
+        #expect(!suggestion.evidence.isEmpty)
+        #expect(suggestion.explanation(projectName: "Acme Corp", now: base).contains("Acme Corp"))
+    }
+}
+
+@Suite("What the model learns from")
+struct CoordinatorLearningFeedbackTests {
+    func assignment(_ source: AssignmentSource) -> Assignment {
+        Assignment(
+            projectId: "acme", projectName: "Acme Corp",
+            assignmentSource: source, assignmentConfidence: 100
+        )
+    }
+
+    @Test("a manual choice is recorded as evidence")
+    func learnsFromManual() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.reassignCurrentSession(to: assignment(.manualPopup))
+        await coordinator.endSession(at: at(300))
+
+        let recorded = await deps.recorded
+        #expect(!recorded.isEmpty)
+        #expect(recorded.allSatisfy { $0.projectId == "acme" && $0.weight > 0 })
+        #expect(recorded.contains { $0.feature == "entity:bubble::sampleapp" })
+    }
+
+    @Test("a rule the user wrote is trustworthy evidence too")
+    func learnsFromRules() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.reassignCurrentSession(to: assignment(.autoRule))
+        await coordinator.endSession(at: at(300))
+
+        #expect(await !deps.recorded.isEmpty)
+    }
+
+    @Test("the model does NOT learn from its own suggestions")
+    func doesNotLearnFromItself() async {
+        // A model that treats its own output as evidence converges on whatever
+        // it guessed first and grows more certain the longer it is wrong.
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.reassignCurrentSession(to: assignment(.suggested))
+        await coordinator.endSession(at: at(300))
+
+        #expect(await deps.recorded.isEmpty, "self-reinforcement would make it confidently wrong")
+    }
+
+    @Test("unassigned time teaches nothing")
+    func unassignedTeachesNothing() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.endSession(at: at(300))
+
+        #expect(await deps.recorded.isEmpty)
+    }
+
+    @Test("a discarded flicker is not evidence either")
+    func flickersTeachNothing() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.reassignCurrentSession(to: assignment(.manualPopup))
+        await coordinator.endSession(at: at(1))   // under the minimum
+
+        #expect(await deps.recorded.isEmpty)
+    }
+}
+
+@Suite("Correcting a suggestion")
+struct CoordinatorCorrectionTests {
+    func history(project: String) -> [FeatureAssociation] {
+        [
+            FeatureAssociation(feature: "entity:bubble::sampleapp", projectId: project,
+                               mass: 25, observations: 25, lastUpdated: base),
+            FeatureAssociation(feature: "host:bubble.io", projectId: project,
+                               mass: 25, observations: 25, lastUpdated: base),
+        ]
+    }
+
+    @Test("overruling a suggestion records both the mistake and the right answer")
+    func correctionRecordsBothSides() async {
+        let deps = FakeDependencies(projects: [
+            Project(id: "acme", name: "Acme Corp"),
+            Project(id: "internal", name: "Internal"),
+        ])
+        await deps.setAssociations(history(project: "acme"))
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        #expect(await coordinator.status(now: base).assignmentSource == .suggested)
+
+        // The user says: no, this is Internal.
+        await coordinator.reassignCurrentSession(
+            to: Assignment(
+                projectId: "internal", projectName: "Internal",
+                assignmentSource: .manualPopup, assignmentConfidence: 100
+            ),
+            now: at(300)
+        )
+
+        let recorded = await deps.recorded
+        let negatives = recorded.filter { $0.weight < 0 }
+        let positives = recorded.filter { $0.weight > 0 }
+
+        #expect(negatives.allSatisfy { $0.projectId == "acme" }, "the wrong guess is penalised")
+        #expect(positives.allSatisfy { $0.projectId == "internal" }, "the correction is learned")
+        #expect(!negatives.isEmpty && !positives.isEmpty)
+    }
+
+    @Test("agreeing with a suggestion is not treated as a correction")
+    func agreeingIsNotACorrection() async {
+        let deps = FakeDependencies(projects: [Project(id: "acme", name: "Acme Corp")])
+        await deps.setAssociations(history(project: "acme"))
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.reassignCurrentSession(
+            to: Assignment(
+                projectId: "acme", projectName: "Acme Corp",
+                assignmentSource: .manualPopup, assignmentConfidence: 100
+            ),
+            now: at(300)
+        )
+
+        #expect(await deps.recorded.filter { $0.weight < 0 }.isEmpty)
+    }
+
+    @Test("changing a project that was never a suggestion records no penalty")
+    func manualChangeIsNotACorrection() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        // No history, so the session starts unassigned rather than suggested.
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.reassignCurrentSession(
+            to: Assignment(
+                projectId: "acme", assignmentSource: .manualPopup, assignmentConfidence: 100
+            ),
+            now: at(300)
+        )
+
+        #expect(await deps.recorded.isEmpty, "there was no wrong guess to penalise")
+    }
+
+    @Test("a correction clears the stale explanation")
+    func correctionClearsExplanation() async {
+        let deps = FakeDependencies(projects: [Project(id: "acme", name: "Acme Corp")])
+        await deps.setAssociations(history(project: "acme"))
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        #expect(await coordinator.suggestionForCurrentSession() != nil)
+
+        await coordinator.reassignCurrentSession(
+            to: Assignment(projectId: "internal", assignmentSource: .manualPopup,
+                           assignmentConfidence: 100),
+            now: at(300)
+        )
+        #expect(await coordinator.suggestionForCurrentSession() == nil)
     }
 }
