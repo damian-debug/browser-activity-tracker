@@ -135,6 +135,12 @@ final class AppModel {
             .filter { $0.value == .denied }.keys.sorted()
         unsupportedBrowsers = sampler.browserAccess
             .filter { $0.value == .unsupported }.keys.sorted()
+
+        try? store.saveDiagnostics(TrackerStore.Diagnostics(
+            accessibilityTrusted: accessibilityTrusted,
+            browserAccess: sampler.browserAccess.mapValues { "\($0)" },
+            updatedAt: Date().timeIntervalSince1970
+        ))
         do {
             allProjects = try store.projects()
             favourites = try store.favouriteProjects()

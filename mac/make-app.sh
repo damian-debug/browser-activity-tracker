@@ -62,15 +62,22 @@ PLIST
 # until then we fall back to ad-hoc, which works but means re-granting
 # Accessibility after each rebuild.
 IDENTITY="TimeTracker Local Signing"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
-    echo "==> Signing with '$IDENTITY' (stable — permissions survive rebuilds)"
+
+# Only use the identity if it can actually sign. An identity can exist, and
+# even be trusted, yet still be refused by codesign for a subtly wrong key
+# usage — so probe it rather than trusting that it is there.
+sign_with_identity() {
     codesign --force --deep --options runtime \
         --entitlements TimeTrackerApp/TimeTracker.entitlements \
-        --sign "$IDENTITY" "$APP"
+        --sign "$IDENTITY" "$APP" 2>/dev/null
+}
+
+if sign_with_identity; then
+    echo "==> Signed with '$IDENTITY' (stable — permissions survive rebuilds)"
 else
-    echo "==> Signing ad-hoc (no stable identity found)"
-    echo "    Accessibility permission will need re-granting after each rebuild."
-    echo "    See mac/README.md to set up a stable identity."
+    echo "==> Signing ad-hoc (no usable '$IDENTITY')"
+    echo "    Accessibility will need re-granting after each rebuild."
+    echo "    Run ./scripts/create-signing-identity.sh to fix that permanently."
     codesign --force --deep --sign - "$APP" 2>/dev/null
 fi
 

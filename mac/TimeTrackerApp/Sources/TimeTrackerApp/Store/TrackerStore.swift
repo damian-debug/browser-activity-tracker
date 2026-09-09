@@ -140,6 +140,7 @@ public final class TrackerStore: Sendable {
     private static let settingsKey = "settings"
     private static let overrideKey = "override"
     private static let activeSessionKey = "activeSession"
+    private static let diagnosticsKey = "diagnostics"
 
     private func readJSON<T: Decodable>(_ key: String, as type: T.Type) -> T? {
         let raw = try? dbQueue.read { db in
@@ -186,6 +187,29 @@ public final class TrackerStore: Sendable {
 
     public func saveInFlightSession(_ session: ActiveSession?) throws {
         try writeJSON(Self.activeSessionKey, session)
+    }
+
+    /// A record of which signals the app can currently read. Written on each
+    /// refresh so permission problems can be diagnosed without attaching a
+    /// debugger — which would itself change the frontmost app and the data.
+    public struct Diagnostics: Codable, Sendable {
+        public var accessibilityTrusted: Bool
+        public var browserAccess: [String: String]
+        public var updatedAt: Double
+
+        public init(accessibilityTrusted: Bool, browserAccess: [String: String], updatedAt: Double) {
+            self.accessibilityTrusted = accessibilityTrusted
+            self.browserAccess = browserAccess
+            self.updatedAt = updatedAt
+        }
+    }
+
+    public func saveDiagnostics(_ diagnostics: Diagnostics) throws {
+        try writeJSON(Self.diagnosticsKey, diagnostics)
+    }
+
+    public func diagnostics() -> Diagnostics? {
+        readJSON(Self.diagnosticsKey, as: Diagnostics.self)
     }
 
     // ── First run ────────────────────────────────────────────────────────

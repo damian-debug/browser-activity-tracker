@@ -43,9 +43,14 @@ signing changes that signature on every build, so the grant is silently dropped
 — System Settings still lists the app as allowed while `AXIsProcessTrusted()`
 returns false. A stable self-signed identity avoids the whole problem.
 
-The script needs your password, because trusting a certificate for code signing
-is an admin operation. Without it the build still works; you just re-grant
-Accessibility after each rebuild.
+No password required, and no system trust store involved. The certificate does
+need **both** `keyUsage=digitalSignature` and `extendedKeyUsage=codeSigning`:
+with only the latter, `security find-identity` cheerfully lists the identity as
+valid while `codesign` refuses it with "no identity found", which is a
+thoroughly misleading way to spend an afternoon.
+
+Without a stable identity the build still works; you just re-grant Accessibility
+after each rebuild.
 
 ## Permissions
 
