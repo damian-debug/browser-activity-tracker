@@ -80,6 +80,8 @@ final class DashboardModel {
     private(set) var tags: [Tag] = []
     private(set) var settings: AppSettings = .default
     private(set) var rules: [ProjectRule] = []
+    private(set) var knownApps: [(bundleID: String, name: String)] = []
+    private(set) var knownSites: [String] = []
     private(set) var status: String?
 
     init(store: TrackerStore) {
@@ -121,6 +123,8 @@ final class DashboardModel {
             projects = try store.projects()
             tags = try store.tags()
             rules = try store.rules()
+            knownApps = try store.knownApps()
+            knownSites = try store.knownSites()
             sessions = try store.sessions(from: bounds.from, to: bounds.to)
             stats = StatsBuilder.build(
                 sessions: sessions, projects: projects, tags: tags,
@@ -361,6 +365,16 @@ final class DashboardModel {
         } catch {
             status = error.localizedDescription
         }
+    }
+
+    /// A blank rule, for writing one without a session to start from.
+    func newRuleDraft() -> RuleDraft {
+        var draft = RuleDraft()
+        // The least surprising starting point when there is no context: an app
+        // is something you can pick from a list rather than have to recall.
+        draft.type = .appBundleEquals
+        draft.projectId = topLevelProjects.first?.id
+        return draft
     }
 
     func rulesGroupedByProject() -> [(project: String, rules: [ProjectRule])] {

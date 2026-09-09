@@ -275,3 +275,106 @@ struct RuleImpactTests {
         #expect(model.impact(of: draft) == nil, "a query-param rule needs its parameter name")
     }
 }
+
+@MainActor
+@Suite("Creating a rule from scratch")
+struct RuleFromScratchTests {
+    func setUp() throws -> (TrackerStore, DashboardModel) {
+        let store = try TrackerStore()
+        try store.save(Project(id: "acme", name: "Acme Corp"))
+        try store.save(Project(id: "payments", name: "Payment integration", parentId: "acme"))
+        return (store, DashboardModel(store: store))
+    }
+
+    @Test("a blank draft starts somewhere usable rather than empty")
+    func blankDraft() throws {
+        let (_, model) = try setUp()
+        let draft = model.newRuleDraft()
+
+        // With no session for context, the app is the one thing that can be
+        // picked from a list rather than recalled.
+        #expect(draft.type == .appBundleEquals)
+        #expect(draft.ruleId == nil)
+        #expect(draft.projectId == "acme", "pre-selecting the only project saves a step")
+        #expect(!draft.isValid, "still needs a value before it can be saved")
+    }
+
+    @Test("a rule written from scratch saves and takes effect")
+    func savesFromScratch() async throws {
+        let (store, model) = try setUp()
+
+        var draft = model.newRuleDraft()
+        draft.value = "com.figma.Desktop"
+        draft.featureId = "payments"
+        model.save(draft, applyToPast: false)
+
+        let rule = try #require(try store.rules().first)
+        #expect(rule.type == .appBundleEquals)
+        #expect(rule.projectId == "acme")
+        #expect(rule.featureId == "payments")
+
+        // And it actually attributes work.
+        let coordinator = ActivityCoordinator(dependencies: store)
+        await coordinator.observe(
+            ActivitySnapshot(bundleID: "com.figma.Desktop", appName: "Figma"), now: Date()
+        )
+        let status = await coordinator.status(now: Date())
+        #expect(status.projectId == "acme")
+        #expect(status.featureId == "payments")
+    }
+
+    @Test("the apps you have actually used are offered, most-used first")
+    func knownApps() throws {
+        let (store, _) = try setUp()
+        let now = Date()
+        func used(_ bundleID: String, _ name: String, seconds: Int) throws {
+            try store.save(Session(
+                appBundleID: bundleID, appName: name,
+                startTime: now.addingTimeInterval(-Double(seconds)), endTime: now,
+                durationSeconds: seconds
+            ))
+        }
+        try used("com.apple.Terminal", "Terminal", seconds: 100)
+        try used("com.figma.Desktop", "Figma", seconds: 900)
+
+        let model = DashboardModel(store: store)
+        #expect(model.knownApps.first?.bundleID == "com.figma.Desktop")
+        #expect(model.knownApps.map(\.bundleID).contains("com.apple.Terminal"))
+    }
+
+    @Test("the sites you have visited are offered, and blanks are not")
+    func knownSites() throws {
+        let (store, _) = try setUp()
+        let now = Date()
+        try store.save(Session(
+            appBundleID: "com.google.Chrome", appName: "Google Chrome",
+            url: "https://figma.com/x", domain: "figma.com",
+            startTime: now.addingTimeInterval(-600), endTime: now, durationSeconds: 600
+        ))
+        try store.save(Session(
+            appBundleID: "com.apple.Terminal", appName: "Terminal",
+            startTime: now.addingTimeInterval(-60), endTime: now, durationSeconds: 60
+        ))
+
+        let model = DashboardModel(store: store)
+        #expect(model.knownSites == ["figma.com"], "native sessions contribute no site")
+    }
+
+    @Test("a from-scratch rule can be previewed before saving, like any other")
+    func previewWorks() throws {
+        let (store, _) = try setUp()
+        let now = Date()
+        try store.save(Session(
+            appBundleID: "com.figma.Desktop", appName: "Figma",
+            startTime: now.addingTimeInterval(-600), endTime: now, durationSeconds: 600
+        ))
+
+        let model = DashboardModel(store: store)
+        var draft = model.newRuleDraft()
+        draft.value = "com.figma.Desktop"
+
+        let impact = try #require(model.impact(of: draft))
+        #expect(impact.claims == 1)
+        #expect(try store.rules().isEmpty, "previewing must not save anything")
+    }
+}

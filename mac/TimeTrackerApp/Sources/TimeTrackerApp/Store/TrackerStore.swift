@@ -154,6 +154,35 @@ public final class TrackerStore: Sendable {
         _ = try dbQueue.write { try SessionRecord.deleteAll($0) }
     }
 
+    /// Apps seen at any point, most-used first.
+    ///
+    /// Nobody knows their own bundle identifiers by heart, so writing an app
+    /// rule from scratch needs the list rather than a text field.
+    public func knownApps() throws -> [(bundleID: String, name: String)] {
+        try dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT appBundleID, appName, SUM(durationSeconds) AS total
+                FROM session
+                GROUP BY appBundleID
+                ORDER BY total DESC
+                LIMIT 60
+            """).map { (bundleID: $0["appBundleID"], name: $0["appName"]) }
+        }
+    }
+
+    /// Sites seen at any point, most-used first.
+    public func knownSites() throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT domain FROM session
+                WHERE domain IS NOT NULL AND domain <> ''
+                GROUP BY domain
+                ORDER BY SUM(durationSeconds) DESC
+                LIMIT 60
+            """)
+        }
+    }
+
     // ── Key/value state ──────────────────────────────────────────────────
 
     private static let settingsKey = "settings"

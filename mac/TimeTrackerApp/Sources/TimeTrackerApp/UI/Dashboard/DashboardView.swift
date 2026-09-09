@@ -461,13 +461,55 @@ struct RuleEditor: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            // Editable, deliberately: the suggested value is a starting point.
-            TextField("Value", text: $draft.value)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: .monospaced))
+            // Editable, deliberately: a suggested value is a starting point.
+            // Where the possible values are knowable, they are offered too —
+            // nobody recalls their own bundle identifiers.
+            HStack(spacing: 6) {
+                TextField(valuePlaceholder, text: $draft.value)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+
+                if !pickableValues.isEmpty {
+                    Menu {
+                        ForEach(pickableValues, id: \.value) { option in
+                            Button(option.label) { draft.value = option.value }
+                        }
+                    } label: {
+                        Image(systemName: "list.bullet")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Choose from what you have tracked")
+                }
+            }
 
             TextField("Name (optional)", text: $draft.name)
                 .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    /// Values worth offering outright, for the rule types where the set is
+    /// small and knowable. Everything else stays free text.
+    private var pickableValues: [(label: String, value: String)] {
+        switch draft.type {
+        case .appBundleEquals:
+            return model.knownApps.map { (label: "\($0.name)  —  \($0.bundleID)", value: $0.bundleID) }
+        case .domainEquals:
+            return model.knownSites.map { (label: $0, value: $0) }
+        default:
+            return []
+        }
+    }
+
+    private var valuePlaceholder: String {
+        switch draft.type {
+        case .appBundleEquals: return "com.figma.Desktop"
+        case .domainEquals: return "figma.com"
+        case .documentPathContains: return "/Projects/acme/"
+        case .queryParamEquals: return "the value to match"
+        case .titleContains: return "a word from the window title"
+        case .regex: return "a regular expression"
+        default: return "the text to match"
         }
     }
 
@@ -522,12 +564,29 @@ private struct RulesTable: View {
     @Binding var editing: DashboardModel.RuleDraft?
 
     var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Rules assign work automatically from now on.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("New rule…") { editing = model.newRuleDraft() }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            Divider()
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if model.rules.isEmpty {
-            ContentUnavailableView(
-                "No rules yet",
-                systemImage: "text.badge.checkmark",
-                description: Text("Create one from a session in Review Needed, and it will assign work like that from then on.")
-            )
+            ContentUnavailableView {
+                Label("No rules yet", systemImage: "text.badge.checkmark")
+            } description: {
+                Text("Write one here, or create one from a session in Review Needed.")
+            } actions: {
+                Button("New rule…") { editing = model.newRuleDraft() }
+            }
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
