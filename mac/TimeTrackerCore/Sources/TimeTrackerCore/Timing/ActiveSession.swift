@@ -21,7 +21,9 @@ public struct PauseReasons: OptionSet, Hashable, Sendable {
 /// and well covered.
 public struct ActiveSession: Hashable, Sendable {
     public let id: String
-    public let target: TrackingTarget
+    /// Label for display. Recomputed as richer signals arrive; continuity is
+    /// decided by `ActivityIdentity`, never by this.
+    public var target: TrackingTarget
     public var snapshot: ActivitySnapshot
     public var assignment: Assignment
 
@@ -60,6 +62,17 @@ public struct ActiveSession: Hashable, Sendable {
     }
 
     public var isPaused: Bool { !pauseReasons.isEmpty }
+
+    /// Whether `snapshot` is a continuation of this session.
+    public func continues(_ snapshot: ActivitySnapshot) -> Bool {
+        self.snapshot.identity.continues(snapshot.identity)
+    }
+
+    /// Adopt a newer observation of the same work, keeping details it lacks.
+    public mutating func absorb(_ snapshot: ActivitySnapshot) {
+        self.snapshot = snapshot.enriched(from: self.snapshot)
+        self.target = TrackingTarget.resolve(self.snapshot)
+    }
 
     /// Total active seconds as of `date`, including the open segment.
     public func duration(at date: Date) -> Int {

@@ -29,7 +29,7 @@ public enum SessionAssigner {
 
         case .currentTarget:
             guard let target = override.target else { return false }
-            return target.matches(snapshot)
+            return target.continues(snapshot.identity)
         }
     }
 

@@ -10,7 +10,7 @@ struct OverrideTests {
     func override(
         scope: OverrideScope = .global,
         expiry: OverrideExpiry = .manual,
-        target: TrackingTarget? = nil,
+        target: ActivityIdentity? = nil,
         bundleID: String? = nil,
         domain: String? = nil,
         expiresAt: Date? = nil
@@ -59,7 +59,7 @@ struct OverrideTests {
     @Test("a target-scoped override applies only to that window or document")
     func targetScoped() {
         let editing = nativeSnapshot(documentPath: "/Users/d/acme/main.swift")
-        let o = override(scope: .currentTarget, target: TrackingTarget.resolve(editing))
+        let o = override(scope: .currentTarget, target: editing.identity)
 
         #expect(SessionAssigner.assign(editing, rules: [], override: o, now: referenceNow).projectId == "override-project")
 

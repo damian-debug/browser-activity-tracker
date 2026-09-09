@@ -1,0 +1,343 @@
+import Testing
+import Foundation
+@testable import TimeTrackerCore
+
+// The coordinator is the native counterpart of the extension's tracker.ts, so
+// these cover the same hard-won behaviours: continuity across noisy events,
+// pause reasons surviving a session change, wake-gap handling, and timed
+// override expiry.
+
+actor FakeDependencies: TrackingDependencies {
+    var rules: [ProjectRule] = []
+    var projects: [String: Project] = [:]
+    var override: ActiveProjectOverride?
+    private(set) var persisted: [Session] = []
+    private(set) var clearOverrideCalls = 0
+
+    init(rules: [ProjectRule] = [], projects: [Project] = [], override: ActiveProjectOverride? = nil) {
+        self.rules = rules
+        self.projects = Dictionary(projects.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        self.override = override
+    }
+
+    func enabledRules() async -> [ProjectRule] { rules.filter(\.enabled) }
+    func project(_ id: String) async -> Project? { projects[id] }
+    func currentOverride() async -> ActiveProjectOverride? { override }
+    func clearOverride() async {
+        override = nil
+        clearOverrideCalls += 1
+    }
+    func persist(_ session: Session) async { persisted.append(session) }
+
+    func setOverride(_ value: ActiveProjectOverride?) { override = value }
+}
+
+private let base = Date(unixMillis: 1_700_000_000_000)
+private func at(_ seconds: Int) -> Date { base.addingTimeInterval(Double(seconds)) }
+
+@Suite("Session lifecycle")
+struct CoordinatorLifecycleTests {
+    @Test("observing activity starts a session")
+    func startsSession() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+
+        let status = await coordinator.status(now: at(30))
+        #expect(status.isTracking)
+        #expect(status.elapsedSeconds == 30)
+    }
+
+    @Test("staying on the same target continues one session rather than fragmenting")
+    func continuesSameTarget() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(url: "https://bubble.io/page?id=sampleapp&tab=Design"), now: base)
+        // Bubble rewrites the URL as you click around; still the same app.
+        await coordinator.observe(browserSnapshot(url: "https://bubble.io/page?id=sampleapp&tab=Workflow"), now: at(30))
+        await coordinator.observe(browserSnapshot(url: "https://bubble.io/page?id=sampleapp&tab=Settings"), now: at(60))
+
+        #expect(await deps.persisted.isEmpty, "no session should have been closed")
+        #expect(await coordinator.status(now: at(90)).elapsedSeconds == 90)
+    }
+
+    @Test("switching target closes the old session and opens a new one")
+    func switchesTarget() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.observe(nativeSnapshot(title: "main.swift"), now: at(60))
+
+        let persisted = await deps.persisted
+        #expect(persisted.count == 1)
+        #expect(persisted[0].durationSeconds == 60)
+        #expect(persisted[0].domain == "bubble.io")
+
+        let status = await coordinator.status(now: at(60))
+        #expect(status.appName == "Code")
+    }
+
+    @Test("repeated identical observations do not restart the session")
+    func idempotentObservation() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        // macOS fires several events for one user action; all of them arrive here.
+        for offset in [0, 0, 1, 1, 2] {
+            await coordinator.observe(browserSnapshot(), now: at(offset))
+        }
+        #expect(await deps.persisted.isEmpty)
+    }
+
+    @Test("a session below the minimum is discarded, not saved")
+    func discardsFlickers() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.observe(nativeSnapshot(), now: at(1))   // passed through
+
+        #expect(await deps.persisted.isEmpty)
+    }
+
+    @Test("excluded activity ends tracking rather than recording it")
+    func honoursExclusions() async {
+        let settings = AppSettings(excludedAppBundleIDs: ["com.apple.Terminal"])
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps, settings: settings)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.observe(nativeSnapshot(bundleID: "com.apple.Terminal"), now: at(60))
+
+        #expect(await deps.persisted.count == 1)
+        #expect(await coordinator.status(now: at(90)).isTracking == false)
+    }
+
+    @Test("details arriving late are merged in rather than overwriting with nil")
+    func enrichesSnapshot() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        // Permission granted mid-session: first sample has no title, next does.
+        let bare = ActivitySnapshot(bundleID: "com.figma.Desktop", appName: "Figma")
+        await coordinator.observe(bare, now: base)
+
+        var titled = bare
+        titled.windowTitle = "KPI Screens"
+        await coordinator.observe(titled, now: at(10))
+
+        // A later sample that lost the title must not erase it.
+        await coordinator.observe(bare, now: at(20))
+        await coordinator.endSession(at: at(30))
+
+        let saved = try! #require(await deps.persisted.first)
+        #expect(saved.windowTitle == "KPI Screens")
+        #expect(saved.durationSeconds == 30, "enrichment must not restart the clock")
+    }
+}
+
+@Suite("Attribution on session start")
+struct CoordinatorAttributionTests {
+    @Test("a matching rule assigns the project and its confidence")
+    func appliesRules() async {
+        let rule = makeRule(type: .domainEquals, value: "bubble.io", projectId: "p1")
+        let deps = FakeDependencies(rules: [rule], projects: [Project(id: "p1", name: "Acme Corp")])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+
+        let status = await coordinator.status(now: base)
+        #expect(status.projectId == "p1")
+        #expect(status.projectName == "Acme Corp")
+        #expect(status.assignmentSource == .autoRule)
+        #expect(status.assignmentConfidence == Confidence.domain)
+    }
+
+    @Test("a disabled rule is ignored")
+    func ignoresDisabledRules() async {
+        let rule = makeRule(type: .domainEquals, value: "bubble.io", projectId: "p1", enabled: false)
+        let deps = FakeDependencies(rules: [rule])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        #expect(await coordinator.status(now: base).projectId == nil)
+    }
+
+    @Test("billable falls back to the project default when the rule says nothing")
+    func billableFallsBackToProject() async {
+        let rule = makeRule(type: .domainEquals, value: "bubble.io", projectId: "p1")
+        let project = Project(id: "p1", name: "Acme Corp", defaultBillable: true)
+        let deps = FakeDependencies(rules: [rule], projects: [project])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.endSession(at: at(30))
+
+        #expect(await deps.persisted.first?.billable == true)
+    }
+
+    @Test("an explicit rule value beats the project default")
+    func ruleBillableWins() async {
+        let rule = makeRule(
+            type: .domainEquals, value: "bubble.io", projectId: "p1", defaultBillable: false
+        )
+        let project = Project(id: "p1", name: "Acme Corp", defaultBillable: true)
+        let deps = FakeDependencies(rules: [rule], projects: [project])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.endSession(at: at(30))
+
+        #expect(await deps.persisted.first?.billable == false)
+    }
+
+    @Test("an active override beats the rules")
+    func overrideBeatsRules() async {
+        let rule = makeRule(type: .domainEquals, value: "bubble.io", projectId: "rule-project")
+        let override = ActiveProjectOverride(
+            projectId: "override-project", scope: .global, expiry: .manual, startedAt: base
+        )
+        let deps = FakeDependencies(rules: [rule], override: override)
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+
+        let status = await coordinator.status(now: base)
+        #expect(status.projectId == "override-project")
+        #expect(status.assignmentSource == .activeProjectOverride)
+    }
+}
+
+@Suite("Pause, resume and reconciliation")
+struct CoordinatorPauseTests {
+    @Test("idle time is not counted")
+    func idleNotCounted() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.pause(.idle, at: at(30))
+        await coordinator.resume(.idle, at: at(130))
+        await coordinator.endSession(at: at(150))
+
+        #expect(await deps.persisted.first?.durationSeconds == 50)
+    }
+
+    @Test("a pause survives a session change: switching apps while idle stays paused")
+    func pausePersistsAcrossSessions() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.pause(.idle, at: at(10))
+
+        // The frontmost app can still change while the user is away.
+        await coordinator.observe(nativeSnapshot(), now: at(20))
+
+        let status = await coordinator.status(now: at(120))
+        #expect(status.isPaused, "a new session must inherit the tracker's pause state")
+        #expect(status.elapsedSeconds == 0, "no time may accrue while idle")
+    }
+
+    @Test("a short gap between heartbeats is credited as work")
+    func creditsShortGap() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.heartbeat(now: at(30))
+        await coordinator.heartbeat(now: at(60))
+        await coordinator.endSession(at: at(60))
+
+        #expect(await deps.persisted.first?.durationSeconds == 60)
+    }
+
+    @Test("a long gap is treated as a sleeping machine and closed at the last checkpoint")
+    func discardsSleepGap() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.heartbeat(now: at(40))
+
+        // Lid closed; nothing fires for an hour.
+        await coordinator.heartbeat(now: at(3640))
+
+        let persisted = await deps.persisted
+        #expect(persisted.count == 1)
+        #expect(persisted[0].durationSeconds == 40, "dead time must not be billed")
+        #expect(await coordinator.status(now: at(3640)).isTracking == false)
+    }
+}
+
+@Suite("Manual control")
+struct CoordinatorManualTests {
+    @Test("an expired override is cleared and the activity re-attributed from rules")
+    func overrideExpiry() async {
+        let rule = makeRule(type: .domainEquals, value: "bubble.io", projectId: "rule-project")
+        let override = ActiveProjectOverride(
+            projectId: "override-project", scope: .global, expiry: .thirtyMinutes,
+            startedAt: base, expiresAt: at(1800)
+        )
+        let deps = FakeDependencies(rules: [rule], projects: [Project(id: "rule-project", name: "Acme Corp")], override: override)
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        #expect(await coordinator.status(now: base).projectId == "override-project")
+
+        await coordinator.overrideExpired(now: at(1800))
+
+        #expect(await deps.clearOverrideCalls == 1)
+        let closed = try! #require(await deps.persisted.first)
+        #expect(closed.projectId == "override-project")
+        #expect(closed.durationSeconds == 1800, "override time is banked up to the expiry moment")
+
+        // Tracking continues on the same activity, now under the rules.
+        let status = await coordinator.status(now: at(1800))
+        #expect(status.isTracking)
+        #expect(status.projectId == "rule-project")
+    }
+
+    @Test("re-assigning the current session does not disturb its clock")
+    func reassignKeepsClock() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+        await coordinator.reassignCurrentSession(to: Assignment(
+            projectId: "p9", projectName: "Chosen",
+            assignmentSource: .manualPopup, assignmentConfidence: 100
+        ))
+
+        let status = await coordinator.status(now: at(60))
+        #expect(status.projectId == "p9")
+        #expect(status.elapsedSeconds == 60, "changing the label must not reset the timer")
+    }
+
+    @Test("starting a manual timer splits time exactly at the switch moment")
+    func manualTimerSplits() async {
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+
+        await coordinator.observe(browserSnapshot(), now: base)
+
+        await deps.setOverride(ActiveProjectOverride(
+            projectId: "p1", scope: .global, expiry: .manual,
+            countsWhileAway: true, startedAt: at(60)
+        ))
+        await coordinator.restartCurrentSession(ignoringIdle: true, now: at(60))
+
+        let closed = try! #require(await deps.persisted.first)
+        #expect(closed.durationSeconds == 60)
+        #expect(closed.projectId == nil, "time before the switch keeps its old attribution")
+
+        // The new session runs under the timer and ignores idle.
+        await coordinator.pause(.idle, at: at(90))
+        let status = await coordinator.status(now: at(120))
+        #expect(!status.isPaused)
+        #expect(status.projectId == "p1")
+    }
+}

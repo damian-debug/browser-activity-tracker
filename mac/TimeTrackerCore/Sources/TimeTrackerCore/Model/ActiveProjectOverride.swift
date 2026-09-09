@@ -25,7 +25,7 @@ public struct ActiveProjectOverride: Hashable, Sendable {
     public var expiry: OverrideExpiry
 
     /// Set when scope is `.currentTarget`.
-    public var target: TrackingTarget?
+    public var target: ActivityIdentity?
     /// Set when scope is `.currentApp`.
     public var bundleID: String?
     /// Set when scope is `.currentApp` and the app is a browser.
@@ -45,7 +45,7 @@ public struct ActiveProjectOverride: Hashable, Sendable {
         billable: Bool? = nil,
         scope: OverrideScope,
         expiry: OverrideExpiry,
-        target: TrackingTarget? = nil,
+        target: ActivityIdentity? = nil,
         bundleID: String? = nil,
         domain: String? = nil,
         countsWhileAway: Bool = false,

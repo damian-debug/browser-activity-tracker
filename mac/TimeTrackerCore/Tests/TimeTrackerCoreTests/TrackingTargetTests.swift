@@ -14,46 +14,46 @@ struct TrackingTargetTests {
 
     @Test("keeps the session when navigating within the same Bubble app")
     func sameBubbleApp() {
-        let target = TrackingTarget.resolve(bubbleApp)
-        #expect(target.matches(browserSnapshot(url: "https://bubble.io/page?id=sampleapp&tab=Settings")))
-        #expect(target.matches(browserSnapshot(url: "https://bubble.io/page?id=sampleapp&tab=Workflow&x=1")))
+        let identity = bubbleApp.identity
+        #expect(identity.continues(browserSnapshot(url: "https://bubble.io/page?id=sampleapp&tab=Settings").identity))
+        #expect(identity.continues(browserSnapshot(url: "https://bubble.io/page?id=sampleapp&tab=Workflow&x=1").identity))
     }
 
     @Test("starts a new session when switching to a different Bubble app")
     func differentBubbleApp() {
-        let target = TrackingTarget.resolve(bubbleApp)
-        #expect(!target.matches(browserSnapshot(url: "https://bubble.io/page?id=otherapp&tab=Design")))
+        let identity = bubbleApp.identity
+        #expect(!identity.continues(browserSnapshot(url: "https://bubble.io/page?id=otherapp&tab=Design").identity))
     }
 
     @Test("keeps the session across navigation within the same Figma file")
     func sameFigmaFile() {
-        let target = TrackingTarget.resolve(figmaFile)
-        #expect(target.matches(browserSnapshot(url: "https://www.figma.com/design/abc123/My-File?node-id=12-34")))
+        let identity = figmaFile.identity
+        #expect(identity.continues(browserSnapshot(url: "https://www.figma.com/design/abc123/My-File?node-id=12-34").identity))
     }
 
     @Test("starts a new session for a different Figma file")
     func differentFigmaFile() {
-        let target = TrackingTarget.resolve(figmaFile)
-        #expect(!target.matches(browserSnapshot(url: "https://www.figma.com/design/zzz999/Other-File")))
+        let identity = figmaFile.identity
+        #expect(!identity.continues(browserSnapshot(url: "https://www.figma.com/design/zzz999/Other-File").identity))
     }
 
     @Test("falls back to exact URL match when no entity is detected")
     func exactURLFallback() {
-        let target = TrackingTarget.resolve(plainPage)
-        #expect(target.matches(browserSnapshot(url: "https://example.com/docs/intro")))
-        #expect(!target.matches(browserSnapshot(url: "https://example.com/docs/advanced")))
+        let identity = plainPage.identity
+        #expect(identity.continues(browserSnapshot(url: "https://example.com/docs/intro").identity))
+        #expect(!identity.continues(browserSnapshot(url: "https://example.com/docs/advanced").identity))
     }
 
     @Test("starts a new session when leaving a project for a plain page on the same domain")
     func leavingProjectPage() {
-        let target = TrackingTarget.resolve(bubbleApp)
-        #expect(!target.matches(browserSnapshot(url: "https://bubble.io/home")))
+        let identity = bubbleApp.identity
+        #expect(!identity.continues(browserSnapshot(url: "https://bubble.io/home").identity))
     }
 
     @Test("starts a new session when the service changes")
     func serviceChange() {
-        let target = TrackingTarget.resolve(bubbleApp)
-        #expect(!target.matches(browserSnapshot(url: "https://www.figma.com/design/abc123/My-File")))
+        let identity = bubbleApp.identity
+        #expect(!identity.continues(browserSnapshot(url: "https://www.figma.com/design/abc123/My-File").identity))
     }
 
     // ── Native signals ───────────────────────────────────────────────────
@@ -61,17 +61,15 @@ struct TrackingTargetTests {
     @Test("a document survives window-title churn (dirty markers, line numbers)")
     func documentBeatsTitle() {
         let editing = nativeSnapshot(title: "main.swift — acme", documentPath: "/Users/d/acme/main.swift")
-        let target = TrackingTarget.resolve(editing)
         let dirty = nativeSnapshot(title: "● main.swift — acme", documentPath: "/Users/d/acme/main.swift")
-        #expect(target.matches(dirty))
+        #expect(editing.identity.continues(dirty.identity))
     }
 
     @Test("switching document within one app starts a new session")
     func differentDocument() {
-        let target = TrackingTarget.resolve(
-            nativeSnapshot(documentPath: "/Users/d/acme/main.swift")
-        )
-        #expect(!target.matches(nativeSnapshot(documentPath: "/Users/d/acme/other.swift")))
+        let editing = nativeSnapshot(documentPath: "/Users/d/acme/main.swift")
+        let other = nativeSnapshot(documentPath: "/Users/d/acme/other.swift")
+        #expect(!editing.identity.continues(other.identity))
     }
 
     @Test("with no document, a native app falls back to window title, then to the app")
