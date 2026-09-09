@@ -19,6 +19,10 @@ public enum ProjectRuleType: String, CaseIterable, Hashable, Sendable, Codable {
 public struct ProjectRule: Identifiable, Hashable, Sendable {
     public var id: String
     public var projectId: String
+    /// Optional feature within that project. Must be a feature *of*
+    /// `projectId` — a rule that pointed at another project's feature would
+    /// silently file time in two places at once.
+    public var featureId: String?
     public var name: String
     public var type: ProjectRuleType
     public var value: String
@@ -37,6 +41,7 @@ public struct ProjectRule: Identifiable, Hashable, Sendable {
     public init(
         id: String = UUID().uuidString,
         projectId: String,
+        featureId: String? = nil,
         name: String,
         type: ProjectRuleType,
         value: String,
@@ -50,6 +55,7 @@ public struct ProjectRule: Identifiable, Hashable, Sendable {
     ) {
         self.id = id
         self.projectId = projectId
+        self.featureId = featureId
         self.name = name
         self.type = type
         self.value = value

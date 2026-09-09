@@ -4,6 +4,7 @@ import TimeTrackerCore
 struct DashboardView: View {
     @Bindable var model: DashboardModel
     @State private var ruleSheetSession: Session?
+    @State private var editingRule: DashboardModel.RuleDraft?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,7 +14,9 @@ struct DashboardView: View {
             Divider()
             Picker("", selection: $model.tab) {
                 ForEach(DashboardModel.Tab.allCases) { tab in
-                    if tab == .review, !model.reviewSessions.isEmpty {
+                    if tab == .rules, !model.rules.isEmpty {
+                        Text("\(tab.rawValue) (\(model.rules.count))").tag(tab)
+                    } else if tab == .review, !model.reviewSessions.isEmpty {
                         Text("\(tab.rawValue) (\(model.reviewSessions.count))").tag(tab)
                     } else {
                         Text(tab.rawValue).tag(tab)
@@ -37,7 +40,21 @@ struct DashboardView: View {
         }
         .frame(minWidth: 860, minHeight: 560)
         .sheet(item: $ruleSheetSession) { session in
-            CreateRuleSheet(model: model, session: session)
+            // Seeded from the session's narrowest suggestion, and from whatever
+            // it is already assigned to.
+            RuleEditor(
+                model: model,
+                session: session,
+                draft: DashboardModel.RuleDraft(
+                    model.ruleSuggestions(for: session).first
+                        ?? RuleSuggestion(label: "", type: .appBundleEquals, value: session.appBundleID),
+                    projectId: session.projectId,
+                    featureId: session.featureId
+                )
+            )
+        }
+        .sheet(item: $editingRule) { draft in
+            RuleEditor(model: model, session: nil, draft: draft)
         }
     }
 
@@ -94,6 +111,7 @@ struct DashboardView: View {
         case .review: ReviewQueueView(model: model, ruleSheetSession: $ruleSheetSession)
         case .sessions: SessionTable(model: model, ruleSheetSession: $ruleSheetSession)
         case .apps: AppsAndSitesTable(model: model)
+        case .rules: RulesTable(model: model, editing: $editingRule)
         }
     }
 }
@@ -328,69 +346,239 @@ private struct FeatureMenu: View {
     }
 }
 
-/// Turning one decision into a standing rule.
-private struct CreateRuleSheet: View {
+/// Creating or changing a rule.
+///
+/// Suggestions seed the form rather than being the whole of it: the app can see
+/// what you did, but only you know how far it should generalise.
+struct RuleEditor: View {
     let model: DashboardModel
-    let session: Session
+    /// The session this was opened from, if any — its suggestions seed the form.
+    var session: Session?
+    @State var draft: DashboardModel.RuleDraft
     @Environment(\.dismiss) private var dismiss
 
-    @State private var chosen: RuleSuggestion?
-    @State private var project: Project?
+    @State private var applyToPast = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Always track work like this").font(.headline)
-            Text("Pick how far this should reach. The narrowest option is safest — a broad rule can quietly swallow unrelated work.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 14) {
+            Text(draft.ruleId == nil ? "New rule" : "Edit rule").font(.headline)
 
-            Picker("Project", selection: $project) {
-                Text("Choose a project…").tag(Project?.none)
-                ForEach(model.projects) { Text($0.name).tag(Project?.some($0)) }
+            if let session {
+                suggestions(for: session)
+                Divider()
             }
 
+            form
+            impact
             Divider()
 
+            HStack {
+                Toggle("Also apply to matching past sessions", isOn: $applyToPast)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button(draft.ruleId == nil ? "Create rule" : "Save") {
+                    model.save(draft, applyToPast: applyToPast)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!draft.isValid)
+            }
+        }
+        .padding(16)
+        .frame(width: 520)
+    }
+
+    // ── Suggestions ──────────────────────────────────────────────────────
+
+    private func suggestions(for session: Session) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Start from what you were doing")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("Narrowest first — a broad rule quietly swallows unrelated work.")
+                .font(.caption2).foregroundStyle(.tertiary)
+
             ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     ForEach(model.ruleSuggestions(for: session)) { suggestion in
+                        let selected = draft.type == suggestion.type && draft.value == suggestion.value
                         HStack(spacing: 8) {
-                            Image(systemName: chosen == suggestion ? "largecircle.fill.circle" : "circle")
-                                .foregroundStyle(chosen == suggestion ? Color.accentColor : .secondary)
+                            Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                                .foregroundStyle(selected ? Color.accentColor : .secondary)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(suggestion.label)
+                                Text(suggestion.label).font(.caption)
                                 Text(suggestion.value)
                                     .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
-                            Text("\(suggestion.confidence)")
-                                .font(.caption2).foregroundStyle(.tertiary)
                         }
                         .contentShape(Rectangle())
-                        .onTapGesture { chosen = suggestion }
+                        .onTapGesture {
+                            draft.type = suggestion.type
+                            draft.value = suggestion.value
+                            draft.queryParamName = suggestion.queryParamName ?? ""
+                        }
                     }
                 }
             }
-            .frame(maxHeight: 220)
+            .frame(maxHeight: 140)
+        }
+    }
 
+    // ── The rule itself ──────────────────────────────────────────────────
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Create rule") {
-                    if let chosen, let project {
-                        model.createRule(chosen, from: session, project: project)
-                    }
-                    dismiss()
+                Picker("Project", selection: $draft.projectId) {
+                    Text("Choose…").tag(String?.none)
+                    ForEach(model.topLevelProjects) { Text($0.name).tag(String?.some($0.id)) }
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(chosen == nil || project == nil)
+                .onChange(of: draft.projectId) { _, _ in
+                    // A feature belongs to one project, so it cannot survive
+                    // the project changing underneath it.
+                    draft.featureId = nil
+                }
+
+                Picker("Feature", selection: $draft.featureId) {
+                    Text("None").tag(String?.none)
+                    ForEach(model.features(of: draft.projectId)) {
+                        Text($0.name).tag(String?.some($0.id))
+                    }
+                }
+                .disabled(model.features(of: draft.projectId).isEmpty)
+            }
+
+            Picker("Match on", selection: $draft.type) {
+                ForEach(ProjectRuleType.allCases, id: \.self) { type in
+                    Text(label(for: type)).tag(type)
+                }
+            }
+
+            if draft.type == .queryParamEquals {
+                TextField("Parameter name", text: $draft.queryParamName)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            // Editable, deliberately: the suggested value is a starting point.
+            TextField("Value", text: $draft.value)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+
+            TextField("Name (optional)", text: $draft.name)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private func label(for type: ProjectRuleType) -> String {
+        switch type {
+        case .domainEquals: return "Site is"
+        case .urlContains: return "URL contains"
+        case .urlStartsWith: return "URL starts with"
+        case .pathContains: return "URL path contains"
+        case .queryParamEquals: return "URL parameter equals"
+        case .titleContains: return "Window title contains"
+        case .regex: return "URL matches regex"
+        case .appBundleEquals: return "App is"
+        case .documentPathContains: return "File path contains"
+        }
+    }
+
+    /// What this rule would actually do to the history already recorded.
+    @ViewBuilder
+    private var impact: some View {
+        if let impact = model.impact(of: draft) {
+            HStack(spacing: 6) {
+                Image(systemName: impact.claims > 0 ? "checkmark.circle" : "circle.dashed")
+                    .foregroundStyle(impact.claims > 0 ? Color.accentColor : .secondary)
+                Text(impactText(impact))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Text("Choose a project and a value to see what this would match.")
+                .font(.caption).foregroundStyle(.tertiary)
+        }
+    }
+
+    private func impactText(_ impact: (claims: Int, alreadyDecided: Int)) -> String {
+        var text = impact.claims == 1
+            ? "Would claim 1 unassigned session"
+            : "Would claim \(impact.claims) unassigned sessions"
+        if impact.alreadyDecided > 0 {
+            // Named rather than hidden: a rule matching a lot of settled work
+            // is usually a sign it is broader than intended.
+            text += ", and also matches \(impact.alreadyDecided) you have already decided (left untouched)"
+        }
+        return text + "."
+    }
+}
+
+// ── Rules ────────────────────────────────────────────────────────────────
+
+private struct RulesTable: View {
+    let model: DashboardModel
+    @Binding var editing: DashboardModel.RuleDraft?
+
+    var body: some View {
+        if model.rules.isEmpty {
+            ContentUnavailableView(
+                "No rules yet",
+                systemImage: "text.badge.checkmark",
+                description: Text("Create one from a session in Review Needed, and it will assign work like that from then on.")
+            )
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(model.rulesGroupedByProject(), id: \.project) { group in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(group.project)
+                                .font(.caption).foregroundStyle(.secondary)
+                            ForEach(group.rules) { rule in
+                                row(rule)
+                                Divider()
+                            }
+                        }
+                    }
+                }
+                .padding(12)
             }
         }
-        .padding(16)
-        .frame(width: 460)
-        .onAppear {
-            chosen = model.ruleSuggestions(for: session).first
-            project = model.projects.first { $0.id == session.projectId }
+    }
+
+    private func row(_ rule: ProjectRule) -> some View {
+        HStack(spacing: 10) {
+            Toggle("", isOn: Binding(
+                get: { rule.enabled },
+                set: { model.setRule(rule, enabled: $0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(rule.name).fontWeight(.medium)
+                    if let featureId = rule.featureId {
+                        Text("› \(model.featureName(featureId))")
+                            .font(.caption)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                    }
+                }
+                Text("\(rule.type.rawValue)  \(rule.value)")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .opacity(rule.enabled ? 1 : 0.5)
+
+            Spacer()
+
+            Text("\(rule.type.confidence)")
+                .font(.caption2).foregroundStyle(.tertiary)
+            Button("Edit") { editing = DashboardModel.RuleDraft(rule) }.buttonStyle(.link)
+            Button("Apply to past") { model.applyToPast(rule) }.buttonStyle(.link)
+            Button("Delete", role: .destructive) { model.delete(rule) }.buttonStyle(.link)
         }
     }
 }

@@ -115,11 +115,15 @@ public enum RuleSuggester {
         from suggestion: RuleSuggestion,
         projectId: String,
         projectName: String,
+        featureId: String? = nil,
+        featureName: String? = nil,
         now: Date = Date()
     ) -> ProjectRule {
-        ProjectRule(
+        let target = featureName.map { "\(projectName) › \($0)" } ?? projectName
+        return ProjectRule(
             projectId: projectId,
-            name: "\(projectName): \(suggestion.label)",
+            featureId: featureId,
+            name: "\(target): \(suggestion.label)",
             type: suggestion.type,
             value: suggestion.value,
             queryParamName: suggestion.queryParamName,
@@ -145,11 +149,14 @@ public enum RuleBackfill {
 
     /// Apply the rule to a session, as the tracker would have at the time.
     public static func applied(
-        _ rule: ProjectRule, to session: Session, projectName: String?, now: Date = Date()
+        _ rule: ProjectRule, to session: Session,
+        projectName: String?, featureName: String? = nil, now: Date = Date()
     ) -> Session {
         var updated = session
         updated.projectId = rule.projectId
         updated.projectName = projectName
+        updated.featureId = rule.featureId
+        updated.featureName = featureName
         updated.assignmentSource = .autoRule
         updated.assignmentConfidence = rule.type.confidence
         updated.matchedRuleId = rule.id
@@ -161,7 +168,9 @@ public enum RuleBackfill {
         return updated
     }
 
-    static func context(for session: Session) -> RuleMatchContext {
+    /// The matcher's view of a stored session, so a candidate rule can be
+    /// tested against history before it is saved.
+    public static func context(for session: Session) -> RuleMatchContext {
         RuleMatchContext(
             appBundleID: session.appBundleID,
             appName: session.appName,

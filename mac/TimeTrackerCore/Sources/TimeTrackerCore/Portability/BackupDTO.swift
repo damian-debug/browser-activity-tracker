@@ -54,6 +54,7 @@ enum BackupDTO {
     struct Rule: Codable {
         var id: String
         var projectId: String
+        var featureId: String?
         var name: String
         var type: String
         var value: String

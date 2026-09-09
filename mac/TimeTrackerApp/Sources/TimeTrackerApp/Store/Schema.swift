@@ -142,6 +142,12 @@ enum Schema {
             try db.execute(sql: "DELETE FROM featureAssociation WHERE feature LIKE 'document:%' AND feature NOT LIKE 'document:/%'")
         }
 
+        migrator.registerMigration("v5-rule-features") { db in
+            try db.alter(table: "projectRule") { t in
+                t.add(column: "featureId", .text)
+            }
+        }
+
         return migrator
     }
 }

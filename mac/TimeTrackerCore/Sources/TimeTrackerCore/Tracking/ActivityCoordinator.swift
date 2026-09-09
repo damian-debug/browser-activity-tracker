@@ -146,7 +146,13 @@ public actor ActivityCoordinator {
         // is an ordinary, expressible outcome rather than an all-or-nothing bet.
         var featureId: String?
         var featureName: String?
-        if let projectId = result.projectId {
+
+        // A rule that names a feature has said so explicitly; nothing should
+        // second-guess it.
+        if let ruleFeature = result.featureId {
+            featureId = ruleFeature
+            featureName = await dependencies.projectName(ruleFeature)
+        } else if let projectId = result.projectId {
             // What you said beats what the model inferred, exactly as an
             // override beats a rule one level up.
             if let chosen = await dependencies.currentFeature(), chosen.projectId == projectId {

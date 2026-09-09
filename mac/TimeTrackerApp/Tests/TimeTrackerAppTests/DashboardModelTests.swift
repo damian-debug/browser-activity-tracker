@@ -159,7 +159,8 @@ struct DashboardRuleTests {
             model.ruleSuggestions(for: session).first { $0.type == .documentPathContains }
         )
 
-        let claimed = model.createRule(folderRule, from: session, project: project)
+        let draft = DashboardModel.RuleDraft(folderRule, projectId: project.id, featureId: nil)
+        let claimed = model.save(draft, applyToPast: true)
 
         #expect(claimed == 4, "every earlier session in that folder should be settled")
         #expect(try store.allSessions().allSatisfy { $0.projectId == "acme" })
@@ -184,7 +185,10 @@ struct DashboardRuleTests {
         let folderRule = try #require(
             model.ruleSuggestions(for: session).first { $0.type == .documentPathContains }
         )
-        model.createRule(folderRule, from: session, project: acme)
+        model.save(
+            DashboardModel.RuleDraft(folderRule, projectId: acme.id, featureId: nil),
+            applyToPast: true
+        )
 
         let decided = try #require(try store.allSessions().first { $0.id == "decided" })
         #expect(decided.projectId == "internal", "an explicit decision outranks a later rule")

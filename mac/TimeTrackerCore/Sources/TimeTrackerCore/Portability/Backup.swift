@@ -157,7 +157,7 @@ private extension Backup {
 
     static func dto(_ r: ProjectRule) -> BackupDTO.Rule {
         .init(
-            id: r.id, projectId: r.projectId, name: r.name,
+            id: r.id, projectId: r.projectId, featureId: r.featureId, name: r.name,
             type: r.type.rawValue, value: r.value, queryParamName: r.queryParamName,
             priority: r.priority, enabled: r.enabled,
             defaultTagIds: r.defaultTagIds, defaultBillable: r.defaultBillable,
@@ -219,7 +219,8 @@ private extension Backup {
     static func domain(_ r: BackupDTO.Rule) -> ProjectRule? {
         guard let type = ProjectRuleType(rawValue: r.type) else { return nil }
         return ProjectRule(
-            id: r.id, projectId: r.projectId, name: r.name, type: type, value: r.value,
+            id: r.id, projectId: r.projectId, featureId: r.featureId,
+            name: r.name, type: type, value: r.value,
             queryParamName: r.queryParamName, priority: r.priority ?? 0,
             enabled: r.enabled ?? true, defaultTagIds: r.defaultTagIds,
             defaultBillable: r.defaultBillable,

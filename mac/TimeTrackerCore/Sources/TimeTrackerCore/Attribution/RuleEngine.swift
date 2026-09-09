@@ -54,6 +54,7 @@ public struct RuleMatchContext: Hashable, Sendable {
 
 public struct RuleEngineResult: Hashable, Sendable {
     public var projectId: String?
+    public var featureId: String?
     public var matchedRuleId: String?
     public var assignmentSource: AssignmentSource
     public var assignmentConfidence: Int
@@ -62,6 +63,7 @@ public struct RuleEngineResult: Hashable, Sendable {
 
     public init(
         projectId: String? = nil,
+        featureId: String? = nil,
         matchedRuleId: String? = nil,
         assignmentSource: AssignmentSource,
         assignmentConfidence: Int,
@@ -69,6 +71,7 @@ public struct RuleEngineResult: Hashable, Sendable {
         billable: Bool? = nil
     ) {
         self.projectId = projectId
+        self.featureId = featureId
         self.matchedRuleId = matchedRuleId
         self.assignmentSource = assignmentSource
         self.assignmentConfidence = assignmentConfidence
@@ -99,6 +102,7 @@ public enum RuleEngine {
         for rule in candidates where matches(rule, context) {
             return RuleEngineResult(
                 projectId: rule.projectId,
+                featureId: rule.featureId,
                 matchedRuleId: rule.id,
                 assignmentSource: .autoRule,
                 assignmentConfidence: rule.type.confidence,

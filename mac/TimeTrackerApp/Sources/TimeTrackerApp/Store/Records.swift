@@ -79,6 +79,7 @@ struct RuleRecord: Codable, FetchableRecord, PersistableRecord {
 
     var id: String
     var projectId: String
+    var featureId: String?
     var name: String
     var type: String
     var value: String
@@ -91,7 +92,7 @@ struct RuleRecord: Codable, FetchableRecord, PersistableRecord {
     var updatedAt: Double
 
     init(_ r: ProjectRule) {
-        id = r.id; projectId = r.projectId; name = r.name
+        id = r.id; projectId = r.projectId; featureId = r.featureId; name = r.name
         type = r.type.rawValue; value = r.value; queryParamName = r.queryParamName
         priority = r.priority; enabled = r.enabled
         defaultTagIds = encodeIDs(r.defaultTagIds)
@@ -105,7 +106,8 @@ struct RuleRecord: Codable, FetchableRecord, PersistableRecord {
     var domain: ProjectRule? {
         guard let kind = ProjectRuleType(rawValue: type) else { return nil }
         return ProjectRule(
-            id: id, projectId: projectId, name: name, type: kind, value: value,
+            id: id, projectId: projectId, featureId: featureId,
+            name: name, type: kind, value: value,
             queryParamName: queryParamName, priority: priority, enabled: enabled,
             defaultTagIds: decodeIDs(defaultTagIds), defaultBillable: defaultBillable,
             createdAt: Date(timeIntervalSince1970: createdAt),

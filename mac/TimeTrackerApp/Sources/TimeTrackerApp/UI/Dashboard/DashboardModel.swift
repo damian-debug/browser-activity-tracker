@@ -18,7 +18,54 @@ final class DashboardModel {
         case review = "Review Needed"
         case sessions = "Sessions"
         case apps = "Apps & Sites"
+        case rules = "Rules"
         var id: String { rawValue }
+    }
+
+    /// An editable rule, whether it is being created or changed.
+    ///
+    /// Suggestions are a starting point rather than a fixed menu: the app can
+    /// see what you did, but only you know how far it should generalise.
+    struct RuleDraft: Equatable, Identifiable {
+        /// The rule being edited, or nil when creating a new one.
+        var ruleId: String?
+        /// Sheets are presented by item, so a new draft still needs an identity.
+        public var id: String { ruleId ?? "new" }
+
+        var name: String = ""
+        var type: ProjectRuleType = .documentPathContains
+        var value: String = ""
+        var queryParamName: String = ""
+        var projectId: String?
+        var featureId: String?
+        var enabled: Bool = true
+
+        var isValid: Bool {
+            projectId != nil
+                && !value.trimmingCharacters(in: .whitespaces).isEmpty
+                && (type != .queryParamEquals || !queryParamName.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+
+        init() {}
+
+        init(_ rule: ProjectRule) {
+            ruleId = rule.id
+            name = rule.name
+            type = rule.type
+            value = rule.value
+            queryParamName = rule.queryParamName ?? ""
+            projectId = rule.projectId
+            featureId = rule.featureId
+            enabled = rule.enabled
+        }
+
+        init(_ suggestion: RuleSuggestion, projectId: String?, featureId: String?) {
+            type = suggestion.type
+            value = suggestion.value
+            queryParamName = suggestion.queryParamName ?? ""
+            self.projectId = projectId
+            self.featureId = featureId
+        }
     }
 
     private let store: TrackerStore
@@ -32,6 +79,7 @@ final class DashboardModel {
     private(set) var projects: [Project] = []
     private(set) var tags: [Tag] = []
     private(set) var settings: AppSettings = .default
+    private(set) var rules: [ProjectRule] = []
     private(set) var status: String?
 
     init(store: TrackerStore) {
@@ -72,6 +120,7 @@ final class DashboardModel {
         do {
             projects = try store.projects()
             tags = try store.tags()
+            rules = try store.rules()
             sessions = try store.sessions(from: bounds.from, to: bounds.to)
             stats = StatsBuilder.build(
                 sessions: sessions, projects: projects, tags: tags,
@@ -199,36 +248,125 @@ final class DashboardModel {
         RuleSuggester.suggestions(for: session)
     }
 
-    /// Create a rule from a session and apply it to matching past work.
-    /// Returns how many earlier sessions it claimed.
-    @discardableResult
-    func createRule(
-        _ suggestion: RuleSuggestion, from session: Session, project: Project
-    ) -> Int {
-        do {
-            let rule = RuleSuggester.rule(
-                from: suggestion, projectId: project.id, projectName: project.name
-            )
-            try store.save(rule)
+    // ── Rule management ──────────────────────────────────────────────────
 
-            // Reach back over everything, not just the visible range: the point
-            // of a rule is that it settles this question once.
-            let all = try store.allSessions()
-            let claimed = RuleBackfill.sessionsToUpdate(matching: rule, in: all)
-            for old in claimed {
-                try store.updateSession(
-                    RuleBackfill.applied(rule, to: old, projectName: project.name)
-                )
+    /// How many stored sessions a candidate rule would claim, and how many it
+    /// would touch that are already settled.
+    ///
+    /// Shown while editing because the difference between a useful rule and one
+    /// that swallows half your history is a single path segment, and there is
+    /// no way to know which without looking.
+    func impact(of draft: RuleDraft) -> (claims: Int, alreadyDecided: Int)? {
+        guard draft.isValid, let candidate = rule(from: draft) else { return nil }
+        guard let all = try? store.allSessions() else { return nil }
+
+        let claims = RuleBackfill.sessionsToUpdate(matching: candidate, in: all).count
+        let decided = all.filter { session in
+            guard session.projectId != nil || session.reviewed else { return false }
+            return RuleEngine.run(RuleBackfill.context(for: session), rules: [candidate]).projectId != nil
+        }.count
+        return (claims, decided)
+    }
+
+    private func rule(from draft: RuleDraft) -> ProjectRule? {
+        guard let projectId = draft.projectId else { return nil }
+        let projectName = self.projectName(projectId)
+        let featureLabel = draft.featureId.map { " › " + featureName($0) } ?? ""
+        let name = draft.name.trimmingCharacters(in: .whitespaces).isEmpty
+            ? "\(projectName)\(featureLabel)"
+            : draft.name
+
+        return ProjectRule(
+            id: draft.ruleId ?? UUID().uuidString,
+            projectId: projectId,
+            featureId: draft.featureId,
+            name: name,
+            type: draft.type,
+            value: draft.value.trimmingCharacters(in: .whitespaces),
+            queryParamName: draft.type == .queryParamEquals
+                ? draft.queryParamName.trimmingCharacters(in: .whitespaces)
+                : nil,
+            enabled: draft.enabled,
+            updatedAt: Date()
+        )
+    }
+
+    /// Save a rule, and optionally apply it to work already recorded.
+    @discardableResult
+    func save(_ draft: RuleDraft, applyToPast: Bool) -> Int {
+        guard let candidate = rule(from: draft) else { return 0 }
+        do {
+            try store.save(candidate)
+            var claimed = 0
+            if applyToPast {
+                claimed = try backfill(candidate)
             }
             reload()
-            status = claimed.isEmpty
-                ? "Rule created."
-                : "Rule created, and applied to \(claimed.count) earlier session\(claimed.count == 1 ? "" : "s")."
-            return claimed.count
+            status = claimed == 0
+                ? "Rule saved."
+                : "Rule saved, and applied to \(claimed) earlier session\(claimed == 1 ? "" : "s")."
+            return claimed
         } catch {
             status = error.localizedDescription
             return 0
         }
+    }
+
+    private func backfill(_ rule: ProjectRule) throws -> Int {
+        let all = try store.allSessions()
+        let claimed = RuleBackfill.sessionsToUpdate(matching: rule, in: all)
+        for old in claimed {
+            try store.updateSession(RuleBackfill.applied(
+                rule, to: old,
+                projectName: projectName(rule.projectId),
+                featureName: rule.featureId.map(featureName)
+            ))
+        }
+        return claimed.count
+    }
+
+    func setRule(_ rule: ProjectRule, enabled: Bool) {
+        var updated = rule
+        updated.enabled = enabled
+        updated.updatedAt = Date()
+        do {
+            try store.save(updated)
+            reload()
+            // Turning a rule off leaves the time it already assigned alone:
+            // that was a decision, and undoing it silently would be worse.
+            status = enabled ? "Rule enabled." : "Rule disabled. Time it already assigned is unchanged."
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    func delete(_ rule: ProjectRule) {
+        do {
+            try store.deleteRule(id: rule.id)
+            reload()
+            status = "Rule deleted. Time it already assigned is unchanged."
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    /// Apply an existing rule to work recorded before it existed.
+    func applyToPast(_ rule: ProjectRule) {
+        do {
+            let claimed = try backfill(rule)
+            reload()
+            status = claimed == 0
+                ? "Nothing left for that rule to claim."
+                : "Applied to \(claimed) earlier session\(claimed == 1 ? "" : "s")."
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    func rulesGroupedByProject() -> [(project: String, rules: [ProjectRule])] {
+        Dictionary(grouping: rules) { $0.projectId }
+            .map { (project: projectName($0.key), rules: $0.value.sorted { $0.name < $1.name }) }
+            .sorted { $0.project < $1.project }
     }
 
     // ── Export ───────────────────────────────────────────────────────────

@@ -94,9 +94,19 @@ Right-click for pause and quit.
 
 **Review Needed is where the app gets better.** Correcting a suggestion tells
 the model both that it was wrong and what the right answer was. When you are
-sure, *Rule…* turns one decision into a standing rule and applies it to
-matching past work in one go — suggestions are offered narrowest first, because
-a broad rule quietly swallows unrelated time.
+sure, *Rule…* turns one decision into a standing rule.
+
+Rules can target a project *or* a project and a feature, and the suggested
+match is a starting point rather than a fixed choice — the type and value are
+both editable, because the app can see what you did but only you know how far
+it should generalise. Before saving, it says how many stored sessions the rule
+would claim, and warns when it also reaches work you have already decided,
+which is usually the sign of a rule broader than intended.
+
+The **Rules** tab lists everything created so far, grouped by project. Rules
+can be edited, disabled, deleted, or applied to work recorded before they
+existed. Disabling or deleting a rule never unpicks time it already assigned:
+that was a decision, and reversing it silently would be worse than leaving it.
 
 Export CSV covers the visible range. Backup saves everything (projects, tags,
 rules, sessions, settings) to a single file; restore either merges it or
