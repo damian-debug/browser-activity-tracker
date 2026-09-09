@@ -187,3 +187,72 @@ struct WorkSignalFeatureTests {
         #expect(FeatureExtractor.features(for: stored).contains { $0.kind == .branch })
     }
 }
+
+@Suite("Claude conversations")
+struct ClaudeParserTests {
+    @Test("a conversation becomes its own entity")
+    func conversation() {
+        let parsed = try! #require(ParserRegistry.parse(
+            "https://claude.ai/chat/f5ebd55f-2b26-47b8-bbcb-c08c15a70c0f"
+        ))
+        #expect(parsed.service == "claude")
+        #expect(parsed.entityId == "f5ebd55f-2b26-47b8-bbcb-c08c15a70c0f")
+    }
+
+    @Test("a Claude Code session is an entity too")
+    func codeSession() {
+        let parsed = try! #require(ParserRegistry.parse(
+            "https://claude.ai/epitaxy/local_f5ebd55f-2b26-47b8-bbcb-c08c15a70c0f"
+        ))
+        #expect(parsed.entityId == "local_f5ebd55f-2b26-47b8-bbcb-c08c15a70c0f")
+    }
+
+    @Test("two conversations are different work")
+    func conversationsDiffer() {
+        // The whole point: without this every conversation reports a window
+        // title of "Claude" and looks like the same session.
+        let a = ParserRegistry.parse("https://claude.ai/chat/aaaaaaaa-1111-2222-3333-444444444444")
+        let b = ParserRegistry.parse("https://claude.ai/chat/bbbbbbbb-1111-2222-3333-444444444444")
+        #expect(a?.entityId != b?.entityId)
+    }
+
+    @Test("index and landing pages are not conversations")
+    func notEveryPage() {
+        #expect(ParserRegistry.parse("https://claude.ai/") == nil)
+        #expect(ParserRegistry.parse("https://claude.ai/new") == nil)
+        #expect(ParserRegistry.parse("https://claude.ai/chat") == nil)
+        #expect(ParserRegistry.parse("https://claude.ai/settings/profile") == nil)
+    }
+
+    @Test("navigating within one conversation keeps a single session")
+    func continuity() {
+        func snapshot(_ url: String) -> ActivitySnapshot {
+            ActivitySnapshot(
+                bundleID: "com.anthropic.claudefordesktop", appName: "Claude",
+                windowTitle: "Payments refactor", url: url
+            )
+        }
+        let base = snapshot("https://claude.ai/chat/f5ebd55f-2b26-47b8-bbcb-c08c15a70c0f")
+        let scrolled = snapshot("https://claude.ai/chat/f5ebd55f-2b26-47b8-bbcb-c08c15a70c0f#msg-9")
+        #expect(base.identity.continues(scrolled.identity))
+
+        let other = snapshot("https://claude.ai/chat/aaaaaaaa-1111-2222-3333-444444444444")
+        #expect(!base.identity.continues(other.identity))
+    }
+
+    @Test("a conversation title becomes learnable feature evidence")
+    func titleIsEvidence() {
+        let snapshot = ActivitySnapshot(
+            bundleID: "com.anthropic.claudefordesktop", appName: "Claude",
+            windowTitle: "Payment integration review",
+            url: "https://claude.ai/chat/f5ebd55f-2b26-47b8-bbcb-c08c15a70c0f"
+        )
+        let keys = Set(FeatureExtractor.features(for: snapshot).map(\.key))
+        #expect(keys.contains("entity:claude::f5ebd55f-2b26-47b8-bbcb-c08c15a70c0f"))
+        #expect(keys.contains("title:payment"))
+        #expect(keys.contains("title:integration"))
+        // The app's own name must not become a title token, or every
+        // conversation would share it.
+        #expect(!keys.contains("title:claude"))
+    }
+}

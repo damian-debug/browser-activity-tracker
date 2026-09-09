@@ -78,23 +78,32 @@ final class ActivitySampler {
         guard bundleID != ownBundleID else { return nil }
 
         let details = AccessibilityReader.focusedWindowDetails(pid: app.processIdentifier)
+
+        // Electron apps report the app's own name as the window title, which
+        // makes every conversation and repository look identical. Their web
+        // area carries the real identity.
+        let web = WebAppReader.read(pid: app.processIdentifier, bundleID: bundleID)
+        let title = web.title ?? details.title
+
         let appChanged = bundleID != lastBundleID
-        let titleChanged = details.title != lastTitle
+        let titleChanged = title != lastTitle
 
         var url: String?
-        if BrowserURLReader.isBrowser(bundleID) {
+        if let webURL = web.url {
+            url = webURL
+        } else if BrowserURLReader.isBrowser(bundleID) {
             url = browserURL(for: bundleID, appChanged: appChanged, titleChanged: titleChanged)
         } else {
             cachedURL = nil
         }
 
         lastBundleID = bundleID
-        lastTitle = details.title
+        lastTitle = title
 
         return ActivitySnapshot(
             bundleID: bundleID,
             appName: app.localizedName ?? bundleID,
-            windowTitle: details.title,
+            windowTitle: title,
             url: url,
             documentPath: details.documentPath,
             gitBranch: details.documentPath.flatMap(branch(forFileAt:)),
@@ -141,6 +150,7 @@ final class ActivitySampler {
     }
 
     private func emit() {
+        AXInspector.dumpFrontmostApp()
         guard let snapshot = currentSnapshot() else { return }
         onChange?(snapshot)
     }

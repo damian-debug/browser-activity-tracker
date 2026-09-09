@@ -128,6 +128,32 @@ the association:
 Git branch needs a document path, which Electron editors like VS Code do not
 expose — it works for Xcode and native editors today.
 
+### Electron apps
+
+Apps like Claude report a window title of just their own name, so every
+conversation looks like the same work. They are Chromium underneath, and
+Chromium exposes a web area with a real URL — but only after a client asks for
+the full accessibility tree via `AXManualAccessibility`.
+
+Two costs, so this is opt-in per app rather than done to anything that might
+be Electron (`WebAppReader.supported`):
+
+- Asking makes the target app build and maintain its whole accessibility
+  tree, which is real work for it.
+- That tree contains everything visible on screen. The reader takes the URL
+  and a title and nothing else; conversation content is never read.
+
+Claude conversations then become first-class entities, so each one can be
+assigned and learned separately, and navigating within one stays a single
+session.
+
+To see what any app exposes:
+
+```bash
+touch ~/Library/Application\ Support/TimeTracker/DEBUG_AX
+# relaunch, then read ax-<bundle-id>.txt in the same folder
+```
+
 ## How attribution works
 
 In order, first match wins:
