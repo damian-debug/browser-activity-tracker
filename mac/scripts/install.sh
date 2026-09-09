@@ -14,7 +14,6 @@ set -euo pipefail
 REPO="damian-debug/browser-activity-tracker"
 ZIP_URL="https://github.com/${REPO}/releases/latest/download/ActivityTracker.zip"
 APP_NAME="Activity Tracker.app"
-BUNDLE_ID="studio.goodspeed.timetracker"
 
 # Pinned leaf certificate of the build machine's signing identity. This is what
 # makes an unnotarized download safe to run: a tampered or substituted build
