@@ -77,6 +77,52 @@ Notes:
   routinely rejected. Direct distribution is the only path for the full
   feature set — which is what every comparable tracker does.
 
+## Using it
+
+Click the menu bar timer for the popover: what is being tracked now, favourite
+projects (click one to start a timer on it), today's totals, and the dashboard.
+Right-click for pause and quit.
+
+**Dashboard** (from the popover, or right-click → Open Dashboard):
+
+| Tab | What it is for |
+|---|---|
+| Projects | Where the time went, billable split, session counts |
+| Review Needed | Anything unassigned or attributed with low confidence |
+| Sessions | Every session, with the project editable inline |
+| Apps & Sites | Which apps and which sites, side by side |
+
+**Review Needed is where the app gets better.** Correcting a suggestion tells
+the model both that it was wrong and what the right answer was. When you are
+sure, *Rule…* turns one decision into a standing rule and applies it to
+matching past work in one go — suggestions are offered narrowest first, because
+a broad rule quietly swallows unrelated time.
+
+Export CSV covers the visible range. Backup saves everything (projects, tags,
+rules, sessions, settings) to a single file; restore either merges it or
+replaces what is here.
+
+## How attribution works
+
+In order, first match wins:
+
+1. **A manual timer or override** — you said so.
+2. **A rule you wrote** — deterministic, scored 60–95 by how specific it is.
+3. **A learned suggestion** — from what you have assigned before, capped at 90
+   so a rule always outranks it.
+4. **Unassigned** — nothing was confident enough.
+
+A learned suggestion below `learnedMinimumConfidence` (50) is discarded rather
+than applied weakly; between that and `reviewConfidenceThreshold` (70) it is
+applied but flagged for review; above, it is applied quietly. An unfilled gap
+costs a moment of attention, a wrong invoice costs more.
+
+The model learns only from decisions with real intent behind them — a manual
+choice, a timer, a rule you wrote, or you confirming a suggestion. It never
+learns from its own guesses: a model that treats its own output as evidence
+converges on whatever it guessed first and grows more certain the longer it is
+wrong.
+
 ## Data
 
 Everything is local. There are no network calls anywhere in the app.

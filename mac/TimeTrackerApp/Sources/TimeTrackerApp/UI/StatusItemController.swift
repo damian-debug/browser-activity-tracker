@@ -13,15 +13,22 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let model: AppModel
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
+    private let dashboard: DashboardWindowController
 
     init(model: AppModel) {
         self.model = model
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.dashboard = DashboardWindowController(store: model.store)
         super.init()
 
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 320, height: 420)
-        popover.contentViewController = NSHostingController(rootView: PopoverView(model: model))
+        popover.contentViewController = NSHostingController(
+            rootView: PopoverView(model: model, openDashboard: { [weak self] in
+                self?.popover.performClose(nil)
+                self?.dashboard.show()
+            })
+        )
         popover.delegate = self
 
         if let button = statusItem.button {
@@ -67,6 +74,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menu.addItem(withTitle: model.isManuallyPaused ? "Resume Tracking" : "Pause Tracking",
                      action: #selector(togglePause), keyEquivalent: "")
             .target = self
+        menu.addItem(withTitle: "Open Dashboard…",
+                     action: #selector(openDashboard), keyEquivalent: "")
+            .target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Activity Tracker",
                      action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -79,5 +89,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     @objc private func togglePause() {
         Task { await model.togglePause() }
+    }
+
+    @objc private func openDashboard() {
+        dashboard.show()
     }
 }

@@ -59,10 +59,18 @@ final class ActivitySampler {
         timer = nil
     }
 
+    /// Our own bundle id. Time spent in the tracker's own windows is not work
+    /// on a project, and recording it would be self-defeating: opening the
+    /// dashboard to review your day would itself create sessions about
+    /// reviewing your day, and teach the model about them.
+    private let ownBundleID = Bundle.main.bundleIdentifier
+
     func currentSnapshot() -> ActivitySnapshot? {
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier
         else { return nil }
+
+        guard bundleID != ownBundleID else { return nil }
 
         let details = AccessibilityReader.focusedWindowDetails(pid: app.processIdentifier)
         let appChanged = bundleID != lastBundleID

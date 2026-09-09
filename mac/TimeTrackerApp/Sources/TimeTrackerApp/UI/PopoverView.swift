@@ -3,6 +3,7 @@ import TimeTrackerCore
 
 struct PopoverView: View {
     @Bindable var model: AppModel
+    var openDashboard: () -> Void = {}
     @State private var newProjectName = ""
     @State private var showingNewProject = false
 
@@ -289,14 +290,28 @@ struct PopoverView: View {
     // ── Footer ───────────────────────────────────────────────────────────
 
     private var footer: some View {
-        HStack {
-            if let error = model.lastError {
-                Text(error).font(.caption2).foregroundStyle(.red).lineLimit(1)
-            }
-            Spacer()
-            Button("Quit") { NSApplication.shared.terminate(nil) }
-                .buttonStyle(.borderless)
+        VStack(spacing: 6) {
+            HStack {
+                Button("Dashboard…", action: openDashboard)
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                Spacer()
+                Toggle("Start at login", isOn: Binding(
+                    get: { model.launchesAtLogin },
+                    set: { value in Task { await model.setLaunchAtLogin(value) } }
+                ))
+                .toggleStyle(.checkbox)
                 .font(.caption)
+            }
+            HStack {
+                if let error = model.lastError {
+                    Text(error).font(.caption2).foregroundStyle(.red).lineLimit(1)
+                }
+                Spacer()
+                Button("Quit") { NSApplication.shared.terminate(nil) }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

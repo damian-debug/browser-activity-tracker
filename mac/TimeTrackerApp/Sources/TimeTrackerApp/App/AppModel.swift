@@ -31,6 +31,7 @@ final class AppModel {
     /// the learned model. Nil when a rule, an override or nothing decided it.
     private(set) var suggestionExplanation: String?
 
+    private(set) var launchesAtLogin = false
     private(set) var accessibilityTrusted = false
     private(set) var deniedBrowsers: [String] = []
     private(set) var unsupportedBrowsers: [String] = []
@@ -134,6 +135,7 @@ final class AppModel {
     func refresh() async {
         status = await coordinator.status(now: Date())
         activeOverride = store.override()
+        launchesAtLogin = LaunchAtLogin.isEnabled
         accessibilityTrusted = sampler.isAccessibilityTrusted
         deniedBrowsers = sampler.browserAccess
             .filter { $0.value == .denied }.keys.sorted()
@@ -250,6 +252,13 @@ final class AppModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         try? store.save(Project(name: trimmed, isFavourite: true))
+        await refresh()
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) async {
+        if !LaunchAtLogin.set(enabled) {
+            LaunchAtLogin.openLoginItemsSettings()
+        }
         await refresh()
     }
 
