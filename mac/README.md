@@ -96,6 +96,12 @@ Right-click for pause and quit.
 the model both that it was wrong and what the right answer was. When you are
 sure, *Rule…* turns one decision into a standing rule.
 
+A rule is a list of conditions that must **all** hold, which is what makes
+shared tools workable: Slack is not a project, but *Slack and a title
+containing `acme-internal`* is. Add conditions with **Add condition** in the
+editor; each one narrows what can match, so a compound rule is also scored
+more confidently than either half alone.
+
 Rules can target a project *or* a project and a feature, and the suggested
 match is a starting point rather than a fixed choice — the type and value are
 both editable, because the app can see what you did but only you know how far

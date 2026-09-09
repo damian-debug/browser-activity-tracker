@@ -378,3 +378,134 @@ struct RuleFromScratchTests {
         #expect(try store.rules().isEmpty, "previewing must not save anything")
     }
 }
+
+@MainActor
+@Suite("Compound rules through the dashboard")
+struct CompoundRuleDashboardTests {
+    func setUp() throws -> (TrackerStore, DashboardModel) {
+        let store = try TrackerStore()
+        try store.save(Project(id: "acme", name: "Acme Corp"))
+        try store.save(Project(id: "internal", name: "Internal"))
+        return (store, DashboardModel(store: store))
+    }
+
+    func slackSession(id: String, title: String) -> Session {
+        let end = Date().addingTimeInterval(-600)
+        return Session(
+            id: id, appBundleID: "com.tinyspeck.slackmacgap", appName: "Slack",
+            windowTitle: title, title: title,
+            startTime: end.addingTimeInterval(-1800), endTime: end, durationSeconds: 1800
+        )
+    }
+
+    @Test("a two-condition rule claims only the matching conversations")
+    func slackChannelRule() throws {
+        let (store, model) = try setUp()
+        try store.save(slackSession(id: "acme1", title: "Slack | #acme-internal"))
+        try store.save(slackSession(id: "acme2", title: "Slack | #acme-internal | Acme Corp"))
+        try store.save(slackSession(id: "general", title: "Slack | #general"))
+        model.reload()
+
+        var draft = model.newRuleDraft()
+        draft.projectId = "acme"
+        draft.conditions = [
+            DashboardModel.RuleDraft.Condition(
+                RuleCondition(type: .appBundleEquals, value: "com.tinyspeck.slackmacgap")
+            ),
+            DashboardModel.RuleDraft.Condition(
+                RuleCondition(type: .titleContains, value: "acme")
+            ),
+        ]
+
+        // The preview must reflect the AND, not either half.
+        let impact = try #require(model.impact(of: draft))
+        #expect(impact.claims == 2, "only the acme channels, not all of Slack")
+
+        model.save(draft, applyToPast: true)
+
+        let sessions = try store.allSessions()
+        #expect(sessions.first { $0.id == "acme1" }?.projectId == "acme")
+        #expect(sessions.first { $0.id == "acme2" }?.projectId == "acme")
+        #expect(sessions.first { $0.id == "general" }?.projectId == nil,
+                "the rest of Slack must be left alone")
+    }
+
+    @Test("a compound rule is more confident than either condition alone")
+    func compoundConfidence() throws {
+        let (store, model) = try setUp()
+        var draft = model.newRuleDraft()
+        draft.projectId = "acme"
+        draft.conditions = [
+            DashboardModel.RuleDraft.Condition(
+                RuleCondition(type: .appBundleEquals, value: "com.tinyspeck.slackmacgap")
+            ),
+            DashboardModel.RuleDraft.Condition(
+                RuleCondition(type: .titleContains, value: "acme")
+            ),
+        ]
+        model.save(draft, applyToPast: false)
+
+        let rule = try #require(try store.rules().first)
+        #expect(rule.confidence > Confidence.appBundle)
+        #expect(rule.confidence > Confidence.titleContains)
+        // High enough to stop landing in the review queue.
+        #expect(rule.confidence >= AppSettings.default.reviewConfidenceThreshold)
+    }
+
+    @Test("conditions survive being saved, reloaded and edited")
+    func roundTripThroughStore() throws {
+        let (store, model) = try setUp()
+        var draft = model.newRuleDraft()
+        draft.projectId = "acme"
+        draft.conditions = [
+            DashboardModel.RuleDraft.Condition(
+                RuleCondition(type: .appBundleEquals, value: "com.tinyspeck.slackmacgap")
+            ),
+            DashboardModel.RuleDraft.Condition(
+                RuleCondition(type: .titleContains, value: "acme")
+            ),
+        ]
+        model.save(draft, applyToPast: false)
+        model.reload()
+
+        var reopened = DashboardModel.RuleDraft(try #require(model.rules.first))
+        #expect(reopened.conditions.count == 2)
+
+        // Narrow it further, then save again.
+        reopened.conditions.append(DashboardModel.RuleDraft.Condition(
+            RuleCondition(type: .titleContains, value: "internal")
+        ))
+        model.save(reopened, applyToPast: false)
+
+        #expect(try store.rules().count == 1)
+        #expect(try store.rules().first?.conditions.count == 3)
+    }
+
+    @Test("a rule needs every condition filled in before it can be saved")
+    func validationRequiresAll() throws {
+        let (_, model) = try setUp()
+        var draft = model.newRuleDraft()
+        draft.projectId = "acme"
+        draft.value = "com.tinyspeck.slackmacgap"
+        #expect(draft.isValid)
+
+        // An empty second condition would otherwise widen the rule silently.
+        draft.conditions.append(DashboardModel.RuleDraft.Condition())
+        #expect(!draft.isValid)
+        #expect(model.impact(of: draft) == nil)
+    }
+
+    @Test("Slack is offered as app-plus-channel before whole-app")
+    func suggestionOrder() throws {
+        let (store, model) = try setUp()
+        try store.save(slackSession(id: "s1", title: "Slack | #acme-internal"))
+        model.reload()
+
+        let suggestions = model.ruleSuggestions(for: try #require(model.sessions.first))
+        let compound = try #require(suggestions.firstIndex { $0.isCompound })
+        let wholeApp = try #require(
+            suggestions.firstIndex { !$0.isCompound && $0.type == .appBundleEquals }
+        )
+        #expect(compound < wholeApp)
+    }
+}

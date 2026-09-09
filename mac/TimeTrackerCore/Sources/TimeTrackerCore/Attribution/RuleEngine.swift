@@ -93,8 +93,15 @@ public enum RuleEngine {
             .filter(\.enabled)
             .sorted { a, b in
                 if a.priority != b.priority { return a.priority > b.priority }
-                if a.type.specificityIndex != b.type.specificityIndex {
-                    return a.type.specificityIndex < b.type.specificityIndex
+
+                let aSpecificity = a.conditions.bestSpecificityIndex
+                let bSpecificity = b.conditions.bestSpecificityIndex
+                if aSpecificity != bSpecificity { return aSpecificity < bSpecificity }
+
+                // A rule that demands more of an activity is the more
+                // deliberate one, so it wins an otherwise even tie.
+                if a.conditions.count != b.conditions.count {
+                    return a.conditions.count > b.conditions.count
                 }
                 return a.id < b.id
             }
@@ -105,7 +112,7 @@ public enum RuleEngine {
                 featureId: rule.featureId,
                 matchedRuleId: rule.id,
                 assignmentSource: .autoRule,
-                assignmentConfidence: rule.type.confidence,
+                assignmentConfidence: rule.confidence,
                 defaultTagIds: rule.defaultTagIds,
                 billable: rule.defaultBillable
             )
@@ -114,11 +121,18 @@ public enum RuleEngine {
         return .unassigned
     }
 
+    /// Every condition must hold. An empty rule matches nothing, so a rule
+    /// stripped of its conditions cannot silently claim all activity.
     static func matches(_ rule: ProjectRule, _ context: RuleMatchContext) -> Bool {
-        let value = rule.value
+        guard !rule.conditions.isEmpty else { return false }
+        return rule.conditions.allSatisfy { matches($0, context) }
+    }
+
+    static func matches(_ condition: RuleCondition, _ context: RuleMatchContext) -> Bool {
+        let value = condition.value
         guard !value.isEmpty else { return false }
 
-        switch rule.type {
+        switch condition.type {
         case .domainEquals:
             guard let domain = context.domain else { return false }
             var expected = value.lowercased()
@@ -139,7 +153,7 @@ public enum RuleEngine {
 
         case .queryParamEquals:
             guard let url = context.url,
-                  let name = rule.queryParamName, !name.isEmpty,
+                  let name = condition.queryParamName, !name.isEmpty,
                   let actual = URLish.queryValue(url, name: name)
             else { return false }
             return actual == value

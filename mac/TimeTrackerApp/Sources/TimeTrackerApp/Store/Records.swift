@@ -81,6 +81,9 @@ struct RuleRecord: Codable, FetchableRecord, PersistableRecord {
     var projectId: String
     var featureId: String?
     var name: String
+    var conditions: String?
+    // Kept in step with the first condition so older readers, and any SQL run
+    // by hand, still see something sensible.
     var type: String
     var value: String
     var queryParamName: String?
@@ -93,6 +96,8 @@ struct RuleRecord: Codable, FetchableRecord, PersistableRecord {
 
     init(_ r: ProjectRule) {
         id = r.id; projectId = r.projectId; featureId = r.featureId; name = r.name
+        conditions = (try? JSONEncoder().encode(r.conditions))
+            .map { String(decoding: $0, as: UTF8.self) }
         type = r.type.rawValue; value = r.value; queryParamName = r.queryParamName
         priority = r.priority; enabled = r.enabled
         defaultTagIds = encodeIDs(r.defaultTagIds)
@@ -101,14 +106,29 @@ struct RuleRecord: Codable, FetchableRecord, PersistableRecord {
         updatedAt = r.updatedAt.timeIntervalSince1970
     }
 
-    /// Returns nil for a rule type this build doesn't understand, rather than
+    /// Returns nil for a rule this build cannot represent, rather than
     /// silently reinterpreting it as a different kind of rule.
     var domain: ProjectRule? {
-        guard let kind = ProjectRuleType(rawValue: type) else { return nil }
+        let decoded: [RuleCondition]?
+        if let conditions, let data = conditions.data(using: .utf8) {
+            decoded = try? JSONDecoder().decode([RuleCondition].self, from: data)
+        } else {
+            decoded = nil
+        }
+
+        let resolved: [RuleCondition]
+        if let decoded, !decoded.isEmpty {
+            resolved = decoded
+        } else if let kind = ProjectRuleType(rawValue: type) {
+            resolved = [RuleCondition(type: kind, value: value, queryParamName: queryParamName)]
+        } else {
+            return nil
+        }
+
         return ProjectRule(
             id: id, projectId: projectId, featureId: featureId,
-            name: name, type: kind, value: value,
-            queryParamName: queryParamName, priority: priority, enabled: enabled,
+            name: name, conditions: resolved,
+            priority: priority, enabled: enabled,
             defaultTagIds: decodeIDs(defaultTagIds), defaultBillable: defaultBillable,
             createdAt: Date(timeIntervalSince1970: createdAt),
             updatedAt: Date(timeIntervalSince1970: updatedAt)

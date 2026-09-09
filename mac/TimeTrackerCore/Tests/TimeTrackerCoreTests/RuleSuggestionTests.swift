@@ -162,3 +162,148 @@ struct RuleBackfillTests {
         #expect(RuleBackfill.sessionsToUpdate(matching: documentRule, in: sessions).count == 1)
     }
 }
+
+@Suite("Compound rules")
+struct CompoundRuleTests {
+    func slack(title: String) -> Session {
+        Session(
+            appBundleID: "com.tinyspeck.slackmacgap", appName: "Slack",
+            windowTitle: title, title: title,
+            startTime: base, endTime: base.addingTimeInterval(600), durationSeconds: 600
+        )
+    }
+
+    @Test("every condition must hold for the rule to fire")
+    func allConditionsRequired() {
+        let rule = ProjectRule(
+            projectId: "acme", name: "Acme in Slack",
+            conditions: [
+                RuleCondition(type: .appBundleEquals, value: "com.tinyspeck.slackmacgap"),
+                RuleCondition(type: .titleContains, value: "acme"),
+            ]
+        )
+
+        let acmeChannel = RuleBackfill.context(for: slack(title: "Slack | #acme-internal"))
+        #expect(RuleEngine.run(acmeChannel, rules: [rule]).projectId == "acme")
+
+        // Right app, wrong channel: this is the whole point — Slack alone must
+        // not claim every project's conversations.
+        let otherChannel = RuleBackfill.context(for: slack(title: "Slack | #general"))
+        #expect(RuleEngine.run(otherChannel, rules: [rule]).projectId == nil)
+
+        // Right words, wrong app.
+        var elsewhere = RuleBackfill.context(for: slack(title: "acme notes"))
+        elsewhere.appBundleID = "com.apple.Notes"
+        #expect(RuleEngine.run(elsewhere, rules: [rule]).projectId == nil)
+    }
+
+    @Test("combining conditions raises confidence above either alone")
+    func confidenceCombines() {
+        let appOnly = ProjectRule(
+            projectId: "p", name: "app", type: .appBundleEquals, value: "com.tinyspeck.slackmacgap"
+        )
+        let titleOnly = ProjectRule(
+            projectId: "p", name: "title", type: .titleContains, value: "acme"
+        )
+        let both = ProjectRule(
+            projectId: "p", name: "both",
+            conditions: appOnly.conditions + titleOnly.conditions
+        )
+
+        #expect(both.confidence > appOnly.confidence)
+        #expect(both.confidence > titleOnly.confidence)
+        // Never as certain as a person saying so.
+        #expect(both.confidence < Confidence.manual)
+    }
+
+    @Test("a single-condition rule scores exactly as it always did")
+    func singleConditionUnchanged() {
+        for type in ProjectRuleType.allCases {
+            let rule = ProjectRule(projectId: "p", name: "r", type: type, value: "x")
+            #expect(rule.confidence == type.confidence)
+        }
+    }
+
+    @Test("a rule with no conditions matches nothing")
+    func emptyRuleMatchesNothing() {
+        // Otherwise stripping a rule's conditions would silently make it claim
+        // every activity there is.
+        let rule = ProjectRule(projectId: "p", name: "empty", conditions: [])
+        #expect(RuleEngine.run(RuleBackfill.context(for: slack(title: "anything")), rules: [rule]).projectId == nil)
+    }
+
+    @Test("the more demanding rule wins an otherwise even tie")
+    func compoundBeatsSimpleOnTies() {
+        let broad = ProjectRule(
+            id: "a", projectId: "broad", name: "Slack",
+            type: .appBundleEquals, value: "com.tinyspeck.slackmacgap"
+        )
+        let precise = ProjectRule(
+            id: "b", projectId: "precise", name: "Slack + acme",
+            conditions: [
+                RuleCondition(type: .appBundleEquals, value: "com.tinyspeck.slackmacgap"),
+                RuleCondition(type: .titleContains, value: "acme"),
+            ]
+        )
+        let context = RuleBackfill.context(for: slack(title: "Slack | #acme-internal"))
+        #expect(RuleEngine.run(context, rules: [broad, precise]).projectId == "precise")
+    }
+
+    @Test("a shared app is offered as app-plus-title before whole-app")
+    func suggestsCompoundForSharedApps() {
+        let suggestions = RuleSuggester.suggestions(for: slack(title: "Slack | #acme-internal | Acme Corp"))
+
+        let compound = try! #require(suggestions.first { $0.isCompound })
+        #expect(compound.conditions.contains { $0.type == .appBundleEquals })
+        #expect(compound.conditions.contains { $0.type == .titleContains })
+
+        // And it comes before claiming the whole app, which would swallow every
+        // other project's conversations.
+        let compoundIndex = try! #require(suggestions.firstIndex { $0.isCompound })
+        let wholeApp = try! #require(
+            suggestions.firstIndex { !$0.isCompound && $0.type == .appBundleEquals }
+        )
+        #expect(compoundIndex < wholeApp)
+    }
+
+    @Test("the distinctive word skips the app's own name and generic chrome")
+    func picksDistinctiveWord() {
+        #expect(RuleSuggester.distinctiveTitleWord("Slack | #acme-internal", appName: "Slack") == "acme-internal")
+        #expect(RuleSuggester.distinctiveTitleWord("Slack", appName: "Slack") == nil)
+        #expect(RuleSuggester.distinctiveTitleWord("New Tab", appName: "Safari") == nil)
+    }
+
+    @Test("compound rules survive a backup round trip")
+    func backupRoundTrip() throws {
+        let rule = ProjectRule(
+            id: "r1", projectId: "acme", name: "Acme in Slack",
+            conditions: [
+                RuleCondition(type: .appBundleEquals, value: "com.tinyspeck.slackmacgap"),
+                RuleCondition(type: .titleContains, value: "acme"),
+            ]
+        )
+        let data = try Backup.encode(Backup.Contents(rules: [rule]))
+        guard case .success(let restored) = Backup.decode(data) else {
+            Issue.record("expected the backup to decode"); return
+        }
+        #expect(restored.rules.first?.conditions.count == 2)
+        #expect(restored.rules.first?.confidence == rule.confidence)
+    }
+
+    @Test("an older backup's flat rule still imports as one condition")
+    func olderBackupsStillImport() {
+        let older = #"""
+        {"format":"bat-backup","schemaVersion":3,"exportedAt":0,"settings":{},
+         "projects":[],"tags":[],
+         "rules":[{"id":"r1","projectId":"p1","name":"old","type":"domain_equals","value":"figma.com"}],
+         "sessions":[]}
+        """#
+        guard case .success(let contents) = Backup.decode(older.data(using: .utf8)!) else {
+            Issue.record("expected the older file to import"); return
+        }
+        let rule = try! #require(contents.rules.first)
+        #expect(rule.conditions.count == 1)
+        #expect(rule.type == .domainEquals)
+        #expect(rule.value == "figma.com")
+    }
+}

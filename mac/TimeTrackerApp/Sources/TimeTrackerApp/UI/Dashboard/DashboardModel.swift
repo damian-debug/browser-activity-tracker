@@ -27,23 +27,79 @@ final class DashboardModel {
     /// Suggestions are a starting point rather than a fixed menu: the app can
     /// see what you did, but only you know how far it should generalise.
     struct RuleDraft: Equatable, Identifiable {
+        /// One editable condition. Identified so SwiftUI can track rows as
+        /// they are added and removed.
+        struct Condition: Equatable, Identifiable {
+            let id = UUID()
+            var type: ProjectRuleType = .appBundleEquals
+            var value: String = ""
+            var queryParamName: String = ""
+
+            var isValid: Bool {
+                !value.trimmingCharacters(in: .whitespaces).isEmpty
+                    && (type != .queryParamEquals
+                        || !queryParamName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+
+            var resolved: RuleCondition {
+                RuleCondition(
+                    type: type,
+                    value: value.trimmingCharacters(in: .whitespaces),
+                    queryParamName: type == .queryParamEquals
+                        ? queryParamName.trimmingCharacters(in: .whitespaces)
+                        : nil
+                )
+            }
+
+            init() {}
+
+            init(_ condition: RuleCondition) {
+                type = condition.type
+                value = condition.value
+                queryParamName = condition.queryParamName ?? ""
+            }
+        }
+
         /// The rule being edited, or nil when creating a new one.
         var ruleId: String?
         /// Sheets are presented by item, so a new draft still needs an identity.
         public var id: String { ruleId ?? "new" }
 
         var name: String = ""
-        var type: ProjectRuleType = .documentPathContains
-        var value: String = ""
-        var queryParamName: String = ""
+        /// All must hold. Slack is not a project; Slack and a channel name is.
+        var conditions: [Condition] = [Condition()]
         var projectId: String?
         var featureId: String?
         var enabled: Bool = true
 
         var isValid: Bool {
-            projectId != nil
-                && !value.trimmingCharacters(in: .whitespaces).isEmpty
-                && (type != .queryParamEquals || !queryParamName.trimmingCharacters(in: .whitespaces).isEmpty)
+            projectId != nil && !conditions.isEmpty && conditions.allSatisfy(\.isValid)
+        }
+
+        var resolvedConditions: [RuleCondition] { conditions.map(\.resolved) }
+
+        // Conveniences for the single-condition case, which is most of them.
+        // They read and write the FIRST condition only.
+        var type: ProjectRuleType {
+            get { conditions.first?.type ?? .appBundleEquals }
+            set {
+                if conditions.isEmpty { conditions = [Condition()] }
+                conditions[0].type = newValue
+            }
+        }
+        var value: String {
+            get { conditions.first?.value ?? "" }
+            set {
+                if conditions.isEmpty { conditions = [Condition()] }
+                conditions[0].value = newValue
+            }
+        }
+        var queryParamName: String {
+            get { conditions.first?.queryParamName ?? "" }
+            set {
+                if conditions.isEmpty { conditions = [Condition()] }
+                conditions[0].queryParamName = newValue
+            }
         }
 
         init() {}
@@ -51,18 +107,14 @@ final class DashboardModel {
         init(_ rule: ProjectRule) {
             ruleId = rule.id
             name = rule.name
-            type = rule.type
-            value = rule.value
-            queryParamName = rule.queryParamName ?? ""
+            conditions = rule.conditions.map(Condition.init)
             projectId = rule.projectId
             featureId = rule.featureId
             enabled = rule.enabled
         }
 
         init(_ suggestion: RuleSuggestion, projectId: String?, featureId: String?) {
-            type = suggestion.type
-            value = suggestion.value
-            queryParamName = suggestion.queryParamName ?? ""
+            conditions = suggestion.conditions.map(Condition.init)
             self.projectId = projectId
             self.featureId = featureId
         }
@@ -285,11 +337,7 @@ final class DashboardModel {
             projectId: projectId,
             featureId: draft.featureId,
             name: name,
-            type: draft.type,
-            value: draft.value.trimmingCharacters(in: .whitespaces),
-            queryParamName: draft.type == .queryParamEquals
-                ? draft.queryParamName.trimmingCharacters(in: .whitespaces)
-                : nil,
+            conditions: draft.resolvedConditions,
             enabled: draft.enabled,
             updatedAt: Date()
         )
@@ -372,7 +420,7 @@ final class DashboardModel {
         var draft = RuleDraft()
         // The least surprising starting point when there is no context: an app
         // is something you can pick from a list rather than have to recall.
-        draft.type = .appBundleEquals
+        draft.conditions = [RuleDraft.Condition()]
         draft.projectId = topLevelProjects.first?.id
         return draft
     }

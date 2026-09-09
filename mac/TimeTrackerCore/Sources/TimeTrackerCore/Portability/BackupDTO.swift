@@ -56,8 +56,11 @@ enum BackupDTO {
         var projectId: String
         var featureId: String?
         var name: String
-        var type: String
-        var value: String
+        /// Present from schema 6 onward. Older files carry a single condition
+        /// in the three fields below instead.
+        var conditions: [RuleCondition]?
+        var type: String?
+        var value: String?
         var queryParamName: String?
         var priority: Int?
         var enabled: Bool?

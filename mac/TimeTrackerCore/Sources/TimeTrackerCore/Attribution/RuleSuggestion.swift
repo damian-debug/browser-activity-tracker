@@ -8,23 +8,35 @@ import Foundation
 /// drifts.
 public struct RuleSuggestion: Hashable, Sendable, Identifiable {
     public var label: String
-    public var type: ProjectRuleType
-    public var value: String
-    public var queryParamName: String?
+    public var conditions: [RuleCondition]
 
-    public var id: String { "\(type.rawValue):\(value):\(queryParamName ?? "")" }
+    public var id: String {
+        conditions.map { "\($0.type.rawValue):\($0.value):\($0.queryParamName ?? "")" }
+            .joined(separator: "&")
+    }
+
+    public init(label: String, conditions: [RuleCondition]) {
+        self.label = label
+        self.conditions = conditions
+    }
 
     public init(
         label: String, type: ProjectRuleType, value: String, queryParamName: String? = nil
     ) {
-        self.label = label
-        self.type = type
-        self.value = value
-        self.queryParamName = queryParamName
+        self.init(
+            label: label,
+            conditions: [RuleCondition(type: type, value: value, queryParamName: queryParamName)]
+        )
     }
 
     /// Confidence this rule would assign, so the UI can show what it buys.
-    public var confidence: Int { type.confidence }
+    public var confidence: Int { conditions.combinedConfidence }
+
+    // Conveniences for the single-condition case; see ProjectRule.
+    public var type: ProjectRuleType { conditions.first?.type ?? .appBundleEquals }
+    public var value: String { conditions.first?.value ?? "" }
+    public var queryParamName: String? { conditions.first?.queryParamName }
+    public var isCompound: Bool { conditions.count > 1 }
 }
 
 public enum RuleSuggester {
@@ -94,6 +106,21 @@ public enum RuleSuggester {
             ))
         }
 
+        // An app plus something from its window is the combination that makes
+        // shared tools workable: Slack is not a project, but Slack and a
+        // channel name is. Offered above the whole-app option, which would
+        // swallow every other project's conversations.
+        if let title = session.windowTitle,
+           let distinctive = distinctiveTitleWord(title, appName: session.appName) {
+            suggestions.append(RuleSuggestion(
+                label: "\(session.appName), when the title mentions “\(distinctive)”",
+                conditions: [
+                    RuleCondition(type: .appBundleEquals, value: session.appBundleID),
+                    RuleCondition(type: .titleContains, value: distinctive),
+                ]
+            ))
+        }
+
         // Broadest, and last: claiming a whole app will catch unrelated work.
         suggestions.append(RuleSuggestion(
             label: "Everything in \(session.appName)",
@@ -110,6 +137,31 @@ public enum RuleSuggester {
         return suggestions
     }
 
+    /// The most project-like word in a window title.
+    ///
+    /// Picks the longest word that is not the app's own name and not generic
+    /// chrome, on the grounds that a channel or client name is usually the
+    /// longest distinctive thing in "Slack | #acme-internal | Acme Corp".
+    static func distinctiveTitleWord(_ title: String, appName: String) -> String? {
+        let appWords = Set(
+            appName.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        )
+        let noise: Set<String> = ["the", "and", "for", "new", "tab", "untitled", "home", "inbox"]
+
+        let candidates = title
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "-" && $0 != "_" })
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "-_")) }
+            .filter { word in
+                let lower = word.lowercased()
+                return word.count >= 4
+                    && !appWords.contains(lower)
+                    && !noise.contains(lower)
+                    && !word.allSatisfy(\.isNumber)
+            }
+
+        return candidates.max { $0.count < $1.count }
+    }
+
     /// Build a rule from a chosen suggestion.
     public static func rule(
         from suggestion: RuleSuggestion,
@@ -124,9 +176,7 @@ public enum RuleSuggester {
             projectId: projectId,
             featureId: featureId,
             name: "\(target): \(suggestion.label)",
-            type: suggestion.type,
-            value: suggestion.value,
-            queryParamName: suggestion.queryParamName,
+            conditions: suggestion.conditions,
             createdAt: now,
             updatedAt: now
         )
@@ -158,7 +208,7 @@ public enum RuleBackfill {
         updated.featureId = rule.featureId
         updated.featureName = featureName
         updated.assignmentSource = .autoRule
-        updated.assignmentConfidence = rule.type.confidence
+        updated.assignmentConfidence = rule.confidence
         updated.matchedRuleId = rule.id
         if let tagIds = rule.defaultTagIds { updated.tagIds = tagIds }
         if let billable = rule.defaultBillable { updated.billable = billable }

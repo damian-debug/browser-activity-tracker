@@ -148,6 +148,28 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v6-rule-conditions") { db in
+            // Rules become a list of conditions that must all hold. Existing
+            // rules are one condition, written into the new column so nothing
+            // has to fall back to the old columns at read time.
+            try db.alter(table: "projectRule") { t in
+                t.add(column: "conditions", .text)
+            }
+            let rows = try Row.fetchAll(db, sql: "SELECT id, type, value, queryParamName FROM projectRule")
+            for row in rows {
+                let condition: [String: String?] = [
+                    "type": row["type"],
+                    "value": row["value"],
+                    "queryParamName": row["queryParamName"],
+                ]
+                let json = try JSONSerialization.data(withJSONObject: [condition.compactMapValues { $0 }])
+                try db.execute(
+                    sql: "UPDATE projectRule SET conditions = ? WHERE id = ?",
+                    arguments: [String(decoding: json, as: UTF8.self), row["id"] as String]
+                )
+            }
+        }
+
         return migrator
     }
 }

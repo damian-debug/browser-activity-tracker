@@ -6,7 +6,7 @@ public enum Backup {
     public static let format = "bat-backup"
 
     /// v3 was the extension's final schema. v4 adds native app fields.
-    public static let schemaVersion = 4
+    public static let schemaVersion = 6
 
     /// Sessions imported from a browser-only export: the extension never
     /// recorded which browser, so saying "Browser" is the honest answer rather
@@ -158,7 +158,12 @@ private extension Backup {
     static func dto(_ r: ProjectRule) -> BackupDTO.Rule {
         .init(
             id: r.id, projectId: r.projectId, featureId: r.featureId, name: r.name,
-            type: r.type.rawValue, value: r.value, queryParamName: r.queryParamName,
+            conditions: r.conditions,
+            // Also written flat, so a rule stays readable to anything expecting
+            // the older single-condition shape.
+            type: r.conditions.first?.type.rawValue,
+            value: r.conditions.first?.value,
+            queryParamName: r.conditions.first?.queryParamName,
             priority: r.priority, enabled: r.enabled,
             defaultTagIds: r.defaultTagIds, defaultBillable: r.defaultBillable,
             createdAt: r.createdAt.unixMillis, updatedAt: r.updatedAt.unixMillis
@@ -217,11 +222,20 @@ private extension Backup {
     /// Rules of an unknown type are dropped rather than guessed at — a rule
     /// that silently means something different would misattribute real time.
     static func domain(_ r: BackupDTO.Rule) -> ProjectRule? {
-        guard let type = ProjectRuleType(rawValue: r.type) else { return nil }
+        let conditions: [RuleCondition]
+        if let stored = r.conditions, !stored.isEmpty {
+            conditions = stored
+        } else if let rawType = r.type, let type = ProjectRuleType(rawValue: rawType),
+                  let value = r.value {
+            // Pre-schema-6 file: one condition, written flat.
+            conditions = [RuleCondition(type: type, value: value, queryParamName: r.queryParamName)]
+        } else {
+            return nil
+        }
+
         return ProjectRule(
             id: r.id, projectId: r.projectId, featureId: r.featureId,
-            name: r.name, type: type, value: r.value,
-            queryParamName: r.queryParamName, priority: r.priority ?? 0,
+            name: r.name, conditions: conditions, priority: r.priority ?? 0,
             enabled: r.enabled ?? true, defaultTagIds: r.defaultTagIds,
             defaultBillable: r.defaultBillable,
             createdAt: Date(unixMillis: r.createdAt ?? 0),

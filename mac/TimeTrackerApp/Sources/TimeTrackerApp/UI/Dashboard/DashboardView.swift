@@ -402,22 +402,23 @@ struct RuleEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(model.ruleSuggestions(for: session)) { suggestion in
-                        let selected = draft.type == suggestion.type && draft.value == suggestion.value
+                        let selected = draft.resolvedConditions == suggestion.conditions
                         HStack(spacing: 8) {
                             Image(systemName: selected ? "largecircle.fill.circle" : "circle")
                                 .foregroundStyle(selected ? Color.accentColor : .secondary)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(suggestion.label).font(.caption)
-                                Text(suggestion.value)
+                                Text(suggestion.conditions.summary)
                                     .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
+                            Text("\(suggestion.confidence)")
+                                .font(.caption2).foregroundStyle(.tertiary)
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            draft.type = suggestion.type
-                            draft.value = suggestion.value
-                            draft.queryParamName = suggestion.queryParamName ?? ""
+                            draft.conditions = suggestion.conditions
+                                .map(DashboardModel.RuleDraft.Condition.init)
                         }
                     }
                 }
@@ -450,80 +451,33 @@ struct RuleEditor: View {
                 .disabled(model.features(of: draft.projectId).isEmpty)
             }
 
-            Picker("Match on", selection: $draft.type) {
-                ForEach(ProjectRuleType.allCases, id: \.self) { type in
-                    Text(label(for: type)).tag(type)
-                }
-            }
+            Divider()
 
-            if draft.type == .queryParamEquals {
-                TextField("Parameter name", text: $draft.queryParamName)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            // Editable, deliberately: a suggested value is a starting point.
-            // Where the possible values are knowable, they are offered too —
-            // nobody recalls their own bundle identifiers.
-            HStack(spacing: 6) {
-                TextField(valuePlaceholder, text: $draft.value)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-
-                if !pickableValues.isEmpty {
-                    Menu {
-                        ForEach(pickableValues, id: \.value) { option in
-                            Button(option.label) { draft.value = option.value }
-                        }
-                    } label: {
-                        Image(systemName: "list.bullet")
+            // Every condition must hold. This is what makes shared tools
+            // workable: Slack is not a project, but Slack and a channel is.
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach($draft.conditions) { $condition in
+                    ConditionRow(
+                        model: model,
+                        condition: $condition,
+                        isFirst: draft.conditions.first?.id == condition.id,
+                        canRemove: draft.conditions.count > 1
+                    ) {
+                        draft.conditions.removeAll { $0.id == condition.id }
                     }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .help("Choose from what you have tracked")
                 }
+
+                Button {
+                    draft.conditions.append(DashboardModel.RuleDraft.Condition())
+                } label: {
+                    Label("Add condition", systemImage: "plus.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
             }
 
             TextField("Name (optional)", text: $draft.name)
                 .textFieldStyle(.roundedBorder)
-        }
-    }
-
-    /// Values worth offering outright, for the rule types where the set is
-    /// small and knowable. Everything else stays free text.
-    private var pickableValues: [(label: String, value: String)] {
-        switch draft.type {
-        case .appBundleEquals:
-            return model.knownApps.map { (label: "\($0.name)  —  \($0.bundleID)", value: $0.bundleID) }
-        case .domainEquals:
-            return model.knownSites.map { (label: $0, value: $0) }
-        default:
-            return []
-        }
-    }
-
-    private var valuePlaceholder: String {
-        switch draft.type {
-        case .appBundleEquals: return "com.figma.Desktop"
-        case .domainEquals: return "figma.com"
-        case .documentPathContains: return "/Projects/acme/"
-        case .queryParamEquals: return "the value to match"
-        case .titleContains: return "a word from the window title"
-        case .regex: return "a regular expression"
-        default: return "the text to match"
-        }
-    }
-
-    private func label(for type: ProjectRuleType) -> String {
-        switch type {
-        case .domainEquals: return "Site is"
-        case .urlContains: return "URL contains"
-        case .urlStartsWith: return "URL starts with"
-        case .pathContains: return "URL path contains"
-        case .queryParamEquals: return "URL parameter equals"
-        case .titleContains: return "Window title contains"
-        case .regex: return "URL matches regex"
-        case .appBundleEquals: return "App is"
-        case .documentPathContains: return "File path contains"
         }
     }
 
@@ -554,6 +508,104 @@ struct RuleEditor: View {
             text += ", and also matches \(impact.alreadyDecided) you have already decided (left untouched)"
         }
         return text + "."
+    }
+}
+
+/// One "and" clause of a rule.
+private struct ConditionRow: View {
+    let model: DashboardModel
+    @Binding var condition: DashboardModel.RuleDraft.Condition
+    let isFirst: Bool
+    let canRemove: Bool
+    let remove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(isFirst ? "Match on" : "and")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 56, alignment: .leading)
+
+                Picker("", selection: $condition.type) {
+                    ForEach(ProjectRuleType.allCases, id: \.self) { type in
+                        Text(label(for: type)).tag(type)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+
+                TextField(placeholder, text: $condition.value)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+
+                if !pickableValues.isEmpty {
+                    Menu {
+                        ForEach(pickableValues, id: \.value) { option in
+                            Button(option.label) { condition.value = option.value }
+                        }
+                    } label: {
+                        Image(systemName: "list.bullet")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Choose from what you have tracked")
+                }
+
+                Button(role: .destructive, action: remove) {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!canRemove)
+                .opacity(canRemove ? 1 : 0.3)
+            }
+
+            if condition.type == .queryParamEquals {
+                TextField("Parameter name", text: $condition.queryParamName)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.leading, 64)
+            }
+        }
+    }
+
+    /// Values worth offering outright, where the set is small and knowable.
+    /// Everything else stays free text — there is no useful list of every
+    /// window title you have ever had.
+    private var pickableValues: [(label: String, value: String)] {
+        switch condition.type {
+        case .appBundleEquals:
+            return model.knownApps.map { (label: "\($0.name)  —  \($0.bundleID)", value: $0.bundleID) }
+        case .domainEquals:
+            return model.knownSites.map { (label: $0, value: $0) }
+        default:
+            return []
+        }
+    }
+
+    private var placeholder: String {
+        switch condition.type {
+        case .appBundleEquals: return "com.figma.Desktop"
+        case .domainEquals: return "figma.com"
+        case .documentPathContains: return "/Projects/acme/"
+        case .titleContains: return "acme-internal"
+        case .queryParamEquals: return "the value to match"
+        case .regex: return "a regular expression"
+        default: return "the text to match"
+        }
+    }
+
+    private func label(for type: ProjectRuleType) -> String {
+        switch type {
+        case .domainEquals: return "Site is"
+        case .urlContains: return "URL contains"
+        case .urlStartsWith: return "URL starts with"
+        case .pathContains: return "URL path contains"
+        case .queryParamEquals: return "URL parameter equals"
+        case .titleContains: return "Window title contains"
+        case .regex: return "URL matches regex"
+        case .appBundleEquals: return "App is"
+        case .documentPathContains: return "File path contains"
+        }
     }
 }
 
@@ -626,15 +678,16 @@ private struct RulesTable: View {
                             .background(Color.secondary.opacity(0.15), in: Capsule())
                     }
                 }
-                Text("\(rule.type.rawValue)  \(rule.value)")
-                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(rule.summary)
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
             }
             .opacity(rule.enabled ? 1 : 0.5)
 
             Spacer()
 
-            Text("\(rule.type.confidence)")
+            Text("\(rule.confidence)")
                 .font(.caption2).foregroundStyle(.tertiary)
+                .help("Confidence this rule assigns")
             Button("Edit") { editing = DashboardModel.RuleDraft(rule) }.buttonStyle(.link)
             Button("Apply to past") { model.applyToPast(rule) }.buttonStyle(.link)
             Button("Delete", role: .destructive) { model.delete(rule) }.buttonStyle(.link)

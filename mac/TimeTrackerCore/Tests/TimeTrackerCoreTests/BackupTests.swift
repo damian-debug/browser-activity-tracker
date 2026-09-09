@@ -262,7 +262,7 @@ struct BackupRoundTripTests {
         let data = try Backup.encode(sampleContents())
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(object["format"] as? String == "bat-backup")
-        #expect(object["schemaVersion"] as? Int == 4)
+        #expect(object["schemaVersion"] as? Int == Backup.schemaVersion)
     }
 }
 

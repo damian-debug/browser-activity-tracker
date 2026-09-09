@@ -24,12 +24,10 @@ public struct ProjectRule: Identifiable, Hashable, Sendable {
     /// silently file time in two places at once.
     public var featureId: String?
     public var name: String
-    public var type: ProjectRuleType
-    public var value: String
 
-    /// Only for `.queryParamEquals`: the parameter name to match.
-    /// `value` holds the expected parameter value.
-    public var queryParamName: String?
+    /// Every condition must match. An empty list never matches, so a rule can
+    /// never accidentally claim everything.
+    public var conditions: [RuleCondition]
 
     public var priority: Int
     public var enabled: Bool
@@ -38,6 +36,33 @@ public struct ProjectRule: Identifiable, Hashable, Sendable {
     public var createdAt: Date
     public var updatedAt: Date
 
+    public init(
+        id: String = UUID().uuidString,
+        projectId: String,
+        featureId: String? = nil,
+        name: String,
+        conditions: [RuleCondition],
+        priority: Int = 0,
+        enabled: Bool = true,
+        defaultTagIds: [String]? = nil,
+        defaultBillable: Bool? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.projectId = projectId
+        self.featureId = featureId
+        self.name = name
+        self.conditions = conditions
+        self.priority = priority
+        self.enabled = enabled
+        self.defaultTagIds = defaultTagIds
+        self.defaultBillable = defaultBillable
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// Convenience for the common single-condition rule.
     public init(
         id: String = UUID().uuidString,
         projectId: String,
@@ -53,18 +78,26 @@ public struct ProjectRule: Identifiable, Hashable, Sendable {
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
-        self.id = id
-        self.projectId = projectId
-        self.featureId = featureId
-        self.name = name
-        self.type = type
-        self.value = value
-        self.queryParamName = queryParamName
-        self.priority = priority
-        self.enabled = enabled
-        self.defaultTagIds = defaultTagIds
-        self.defaultBillable = defaultBillable
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
+        self.init(
+            id: id, projectId: projectId, featureId: featureId, name: name,
+            conditions: [RuleCondition(type: type, value: value, queryParamName: queryParamName)],
+            priority: priority, enabled: enabled,
+            defaultTagIds: defaultTagIds, defaultBillable: defaultBillable,
+            createdAt: createdAt, updatedAt: updatedAt
+        )
     }
+
+    /// Confidence this rule assigns when it fires.
+    public var confidence: Int { conditions.combinedConfidence }
+
+    // Conveniences for the common single-condition rule. They describe the
+    // FIRST condition only, so anything that must account for all of them —
+    // matching, confidence, display — uses `conditions` directly.
+    public var type: ProjectRuleType { conditions.first?.type ?? .appBundleEquals }
+    public var value: String { conditions.first?.value ?? "" }
+    public var queryParamName: String? { conditions.first?.queryParamName }
+    public var isCompound: Bool { conditions.count > 1 }
+
+    /// How this rule reads in the UI, covering every condition.
+    public var summary: String { conditions.summary }
 }
