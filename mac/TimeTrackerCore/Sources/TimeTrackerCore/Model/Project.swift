@@ -60,4 +60,16 @@ public extension Array where Element == Project {
         filter { $0.parentId == projectId }
             .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
     }
+
+    /// The project's feature with this name, ignoring case and surrounding
+    /// space. Creating features by typing makes duplicates easy, and a
+    /// duplicate silently splits one feature's time across two rows.
+    func feature(named name: String, in projectId: String) -> Project? {
+        let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !wanted.isEmpty else { return nil }
+        return features(of: projectId).first {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(wanted) == .orderedSame
+        }
+    }
 }

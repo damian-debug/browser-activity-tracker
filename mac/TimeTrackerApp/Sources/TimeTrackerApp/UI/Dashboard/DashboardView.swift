@@ -358,6 +358,13 @@ struct RuleEditor: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var applyToPast = true
+    @State private var addingFeature = false
+    @State private var newFeatureName = ""
+
+    /// Stands in for "New feature…" in the Feature picker. Never stored: the
+    /// picker's binding turns it into showing the name field instead. Real
+    /// feature ids are UUIDs, so this cannot collide with one.
+    private static let newFeatureTag = "new-feature-placeholder"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -382,8 +389,8 @@ struct RuleEditor: View {
                     model.save(draft, applyToPast: applyToPast)
                     dismiss()
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!draft.isValid)
+                .keyboardShortcut(addingFeature ? nil : .defaultAction)
+                .disabled(!draft.isValid || addingFeature)
             }
         }
         .padding(16)
@@ -440,15 +447,36 @@ struct RuleEditor: View {
                     // A feature belongs to one project, so it cannot survive
                     // the project changing underneath it.
                     draft.featureId = nil
+                    draft.pendingFeature = nil
+                    addingFeature = false
                 }
 
-                Picker("Feature", selection: $draft.featureId) {
+                Picker("Feature", selection: featureSelection) {
                     Text("None").tag(String?.none)
-                    ForEach(model.features(of: draft.projectId)) {
+                    ForEach(model.features(for: draft)) {
                         Text($0.name).tag(String?.some($0.id))
                     }
+                    Divider()
+                    Text("New feature…").tag(String?.some(Self.newFeatureTag))
                 }
-                .disabled(model.features(of: draft.projectId).isEmpty)
+                .disabled(draft.projectId == nil)
+            }
+
+            if addingFeature, let projectId = draft.projectId {
+                HStack {
+                    TextField("New feature in \(model.projectName(projectId))", text: $newFeatureName)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Add") {
+                        model.chooseFeature(named: newFeatureName, in: &draft)
+                        addingFeature = false
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(newFeatureName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Cancel") { addingFeature = false }
+                }
+            } else if let pending = draft.pendingFeature, pending.id == draft.featureId {
+                Text("“\(pending.name)” is new — it is created when you save this rule.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Divider()
@@ -479,6 +507,22 @@ struct RuleEditor: View {
             TextField("Name (optional)", text: $draft.name)
                 .textFieldStyle(.roundedBorder)
         }
+    }
+
+    /// Choosing "New feature…" opens the name field rather than selecting
+    /// anything, so the picker keeps showing the previous choice meanwhile.
+    private var featureSelection: Binding<String?> {
+        Binding(
+            get: { draft.featureId },
+            set: { value in
+                if value == Self.newFeatureTag {
+                    newFeatureName = ""
+                    addingFeature = true
+                } else {
+                    draft.featureId = value
+                }
+            }
+        )
     }
 
     /// What this rule would actually do to the history already recorded.

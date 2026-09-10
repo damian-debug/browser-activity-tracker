@@ -70,6 +70,9 @@ final class DashboardModel {
         var conditions: [Condition] = [Condition()]
         var projectId: String?
         var featureId: String?
+        /// A feature typed into the editor that does not exist yet. It is only
+        /// created when the rule is saved, so cancelling leaves nothing behind.
+        var pendingFeature: Project?
         var enabled: Bool = true
 
         var isValid: Bool {
@@ -193,6 +196,33 @@ final class DashboardModel {
     func features(of projectId: String?) -> [Project] {
         guard let projectId else { return [] }
         return projects.features(of: projectId)
+    }
+
+    /// Features the rule editor offers: the project's own, plus one typed
+    /// into this draft that has not been saved yet.
+    func features(for draft: RuleDraft) -> [Project] {
+        guard let projectId = draft.projectId else { return [] }
+        var list = features(of: projectId)
+        if let pending = draft.pendingFeature, pending.parentId == projectId {
+            list.append(pending)
+        }
+        return list
+    }
+
+    /// Point a draft at a feature by name: the existing one if the project
+    /// already has it, otherwise a new one held until the rule is saved.
+    /// A draft holds at most one unsaved feature; typing another replaces it.
+    func chooseFeature(named name: String, in draft: inout RuleDraft) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let projectId = draft.projectId else { return }
+        if let match = features(for: draft).feature(named: trimmed, in: projectId) {
+            if match.id != draft.pendingFeature?.id { draft.pendingFeature = nil }
+            draft.featureId = match.id
+        } else {
+            let feature = Project(name: trimmed, parentId: projectId)
+            draft.pendingFeature = feature
+            draft.featureId = feature.id
+        }
     }
 
     func projectName(_ id: String?) -> String {
@@ -327,7 +357,9 @@ final class DashboardModel {
     private func rule(from draft: RuleDraft) -> ProjectRule? {
         guard let projectId = draft.projectId else { return nil }
         let projectName = self.projectName(projectId)
-        let featureLabel = draft.featureId.map { " › " + featureName($0) } ?? ""
+        let featureLabel = draft.featureId.map { id in
+            " › " + (features(for: draft).first { $0.id == id }?.name ?? featureName(id))
+        } ?? ""
         let name = draft.name.trimmingCharacters(in: .whitespaces).isEmpty
             ? "\(projectName)\(featureLabel)"
             : draft.name
@@ -348,6 +380,11 @@ final class DashboardModel {
     func save(_ draft: RuleDraft, applyToPast: Bool) -> Int {
         guard let candidate = rule(from: draft) else { return 0 }
         do {
+            // Only if the rule still uses it: one typed and then replaced by
+            // an existing feature should not be created on the way past.
+            if let pending = draft.pendingFeature, pending.id == draft.featureId {
+                try store.save(pending)
+            }
             try store.save(candidate)
             var claimed = 0
             if applyToPast {

@@ -255,6 +255,11 @@ final class AppModel {
     func createFeature(named name: String, in projectId: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if let existing = try? store.features(ofProject: projectId)
+            .feature(named: trimmed, in: projectId) {
+            await setCurrentFeature(existing)
+            return
+        }
         let feature = Project(name: trimmed, parentId: projectId)
         try? store.save(feature)
         await setCurrentFeature(feature)

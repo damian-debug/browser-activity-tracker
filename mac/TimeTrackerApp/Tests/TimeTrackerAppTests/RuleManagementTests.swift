@@ -509,3 +509,88 @@ struct CompoundRuleDashboardTests {
         #expect(compound < wholeApp)
     }
 }
+
+@MainActor
+@Suite("New features from the rule editor")
+struct RuleEditorNewFeatureTests {
+    func setUp() throws -> (TrackerStore, DashboardModel) {
+        let store = try TrackerStore()
+        try store.save(Project(id: "acme", name: "Acme Corp"))
+        try store.save(Project(id: "payments", name: "Payment integration", parentId: "acme"))
+        try store.save(Project(id: "beta", name: "Beta"))
+        return (store, DashboardModel(store: store))
+    }
+
+    func draft(_ model: DashboardModel, project: String) -> DashboardModel.RuleDraft {
+        var draft = model.newRuleDraft()
+        draft.projectId = project
+        draft.value = "com.tinyspeck.slackmacgap"
+        return draft
+    }
+
+    @Test("a project with no features can still be given one")
+    func projectWithoutFeatures() throws {
+        let (store, model) = try setUp()
+        var draft = draft(model, project: "beta")
+        #expect(model.features(for: draft).isEmpty)
+
+        model.chooseFeature(named: "Onboarding", in: &draft)
+        #expect(model.features(for: draft).map(\.name) == ["Onboarding"],
+                "offered in the picker straight away")
+        #expect(try store.features(ofProject: "beta").isEmpty, "but not created yet")
+
+        model.save(draft, applyToPast: false)
+
+        let feature = try #require(try store.features(ofProject: "beta").first)
+        #expect(feature.name == "Onboarding")
+        let rule = try #require(try store.rules().first)
+        #expect(rule.featureId == feature.id)
+        #expect(rule.name == "Beta › Onboarding", "default name uses the new feature")
+    }
+
+    @Test("cancelling the rule leaves no stray feature behind")
+    func cancelLeavesNothing() throws {
+        let (store, model) = try setUp()
+        var draft = draft(model, project: "beta")
+        model.chooseFeature(named: "Onboarding", in: &draft)
+        // Dismissing the sheet simply drops the draft.
+        _ = draft
+        #expect(try store.features(ofProject: "beta").isEmpty)
+    }
+
+    @Test("an existing name is reused, whatever its case or spacing")
+    func reusesExisting() throws {
+        let (store, model) = try setUp()
+        var draft = draft(model, project: "acme")
+        model.chooseFeature(named: "  payment INTEGRATION ", in: &draft)
+
+        #expect(draft.featureId == "payments")
+        #expect(draft.pendingFeature == nil)
+        model.save(draft, applyToPast: false)
+        #expect(try store.features(ofProject: "acme").count == 1, "no duplicate")
+    }
+
+    @Test("a feature typed and then replaced is never created")
+    func replacedPendingIsDropped() throws {
+        let (store, model) = try setUp()
+        var draft = draft(model, project: "acme")
+        model.chooseFeature(named: "Typo", in: &draft)
+        model.chooseFeature(named: "Payment integration", in: &draft)
+        model.save(draft, applyToPast: false)
+
+        #expect(try store.features(ofProject: "acme").map(\.name) == ["Payment integration"])
+        #expect(try store.rules().first?.featureId == "payments")
+    }
+
+    @Test("choosing None after typing a feature does not create it")
+    func noneAfterTyping() throws {
+        let (store, model) = try setUp()
+        var draft = draft(model, project: "beta")
+        model.chooseFeature(named: "Onboarding", in: &draft)
+        draft.featureId = nil
+        model.save(draft, applyToPast: false)
+
+        #expect(try store.features(ofProject: "beta").isEmpty)
+        #expect(try store.rules().first?.featureId == nil)
+    }
+}

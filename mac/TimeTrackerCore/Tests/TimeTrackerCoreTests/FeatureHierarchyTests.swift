@@ -159,3 +159,34 @@ struct FeatureBackupTests {
         #expect(contents.sessions.first?.featureId == nil)
     }
 }
+
+@Suite("Finding a feature by name")
+struct FeatureByNameTests {
+    let projects = [
+        Project(id: "acme", name: "Acme"),
+        Project(id: "beta", name: "Beta"),
+        Project(id: "pay", name: "Payments", parentId: "acme"),
+        Project(id: "beta-pay", name: "Payments", parentId: "beta"),
+    ]
+
+    @Test("matches regardless of case and surrounding space")
+    func caseAndSpace() {
+        #expect(projects.feature(named: "  payMENTS ", in: "acme")?.id == "pay")
+    }
+
+    @Test("only within the given project")
+    func scopedToProject() {
+        #expect(projects.feature(named: "Payments", in: "beta")?.id == "beta-pay")
+        #expect(projects.feature(named: "Payments", in: "nope") == nil)
+    }
+
+    @Test("a blank name matches nothing")
+    func blank() {
+        #expect(projects.feature(named: "   ", in: "acme") == nil)
+    }
+
+    @Test("a top-level project is never returned as a feature")
+    func notTopLevel() {
+        #expect(projects.feature(named: "Beta", in: "acme") == nil)
+    }
+}
