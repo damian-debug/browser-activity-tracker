@@ -29,6 +29,21 @@ enum LaunchAtLogin {
         }
     }
 
+    /// For scripts/uninstall.sh. Deleting the app does not remove its login
+    /// item: macOS keeps it registered and enabled, pointing at a bundle that
+    /// no longer exists, and only the app that registered it can take it out.
+    static func unregisterForUninstall() -> Bool {
+        switch SMAppService.mainApp.status {
+        case .enabled, .requiresApproval:
+            return set(false)
+        default:
+            // Nothing registered. An app that has never been registered
+            // reports .notFound rather than .notRegistered, and unregister()
+            // throws in both cases, so neither is a failure worth reporting.
+            return true
+        }
+    }
+
     static func openLoginItemsSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }

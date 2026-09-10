@@ -34,6 +34,38 @@ requests of any kind — there is no account, no server, and nobody else can see
 your activity. If you want to share hours with someone, you export the rows you
 choose, yourself, from the dashboard.
 
+### Uninstalling
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/damian-debug/browser-activity-tracker/master/mac/scripts/uninstall.sh | bash
+```
+
+This removes the app, its "Open at login" entry, its Accessibility and
+browser permissions, and its preferences. It then asks whether to delete your
+tracked history as well — **the default is to keep it**, so reinstalling picks
+up where you left off. If you do delete it, it goes to the Trash rather than
+being erased, so a mistaken "y" is recoverable until you empty the Trash.
+
+To skip the question, add a flag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/damian-debug/browser-activity-tracker/master/mac/scripts/uninstall.sh | bash -s -- --delete-data
+curl -fsSL https://raw.githubusercontent.com/damian-debug/browser-activity-tracker/master/mac/scripts/uninstall.sh | bash -s -- --keep-data
+```
+
+Want a copy of your hours first? Export them from the dashboard before
+uninstalling.
+
+Dragging the app to the Trash also works, but leaves things behind: macOS keeps
+the login item registered and enabled after its app is deleted, and the
+permission entries stay listed in System Settings. The script cleans those up
+in the one order that works — the login item can only be removed by the app
+itself, and permissions can only be reset while the app still exists.
+
+If you installed 1.0.0 and turned on "Open at login", the script cannot
+remove that entry for you (the hook it uses arrived in 1.0.1). It will say so;
+switch Activity Tracker off in System Settings → General → Login Items.
+
 ---
 
 ## Why the Terminal command

@@ -48,6 +48,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleVersion</key><string>${VERSION}</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
 
+    <!-- Tells scripts/uninstall.sh this build understands
+         --unregister-login-item. A build without it would ignore the flag
+         and simply launch, so the uninstaller must not pass it blindly. -->
+    <key>ActivityTrackerUninstallHook</key><true/>
+
     <!-- Agent app: no Dock icon, no app menu. The menu bar item is the app. -->
     <key>LSUIElement</key><true/>
 

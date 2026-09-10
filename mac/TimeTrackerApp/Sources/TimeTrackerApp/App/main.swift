@@ -52,6 +52,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+// Called by scripts/uninstall.sh just before it deletes the app. Handled
+// before NSApplication starts, so no menu bar item or tracking ever spins up.
+if CommandLine.arguments.contains("--unregister-login-item") {
+    exit(LaunchAtLogin.unregisterForUninstall() ? 0 : 1)
+}
+
 let delegate = AppDelegate()
 let app = NSApplication.shared
 app.delegate = delegate

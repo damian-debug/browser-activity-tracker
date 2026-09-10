@@ -14,6 +14,7 @@ Installing it on a teammate's Mac: see [INSTALL.md](INSTALL.md).
 | `make-app.sh` | Assembles `build/Activity Tracker.app` |
 | `make-release.sh` | Packages a signed universal build for the team |
 | `scripts/install.sh` | What teammates run to install and update |
+| `scripts/uninstall.sh` | Removes the app, login item, permissions and preferences; asks about data |
 | `scripts/create-signing-identity.sh` | One-time setup for a stable signing identity |
 
 ## Build and run

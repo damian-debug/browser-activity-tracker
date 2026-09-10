@@ -24,6 +24,11 @@ EXPECTED_CERT_SHA1="3f945c138150ced62d00c0ce0555cab797fa5acb"
 say() { printf '\033[1m==>\033[0m %s\n' "$1"; }
 die() { printf '\033[31mERROR:\033[0m %s\n' "$1" >&2; exit 1; }
 
+# Everything runs inside main(), called on the last line. Under `curl | bash`
+# bash executes as it reads, so a connection dropped mid-download would
+# otherwise run a truncated script. Wrapped, nothing runs until all of it
+# has arrived and parsed.
+main() {
 [ "$(uname -s)" = "Darwin" ] || die "Activity Tracker is macOS only."
 
 # /Applications is group-writable by admins on a normal Mac; fall back to the
@@ -98,5 +103,11 @@ window titles and open files, which is what makes attribution to a project work.
 
 Everything stays on this Mac. The app makes no network requests at all,
 and nothing is shared with anyone unless you export it yourself.
+
+To remove it later:
+  curl -fsSL https://raw.githubusercontent.com/damian-debug/browser-activity-tracker/master/mac/scripts/uninstall.sh | bash
 NOTE
 fi
+}
+
+main "$@"
