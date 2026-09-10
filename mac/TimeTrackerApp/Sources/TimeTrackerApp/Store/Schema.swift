@@ -170,6 +170,18 @@ enum Schema {
             }
         }
 
+        // The idle default went from 1 to 5 minutes. Settings are stored whole,
+        // so anyone who has ever saved them has the old default pinned. Lift
+        // exactly that value; any other was a deliberate choice and stays.
+        migrator.registerMigration("v7-idle-five-minutes") { db in
+            try db.execute(sql: """
+                UPDATE appState
+                SET value = json_set(value, '$.idleThresholdSeconds', 300)
+                WHERE key = 'settings'
+                  AND json_extract(value, '$.idleThresholdSeconds') = 60
+                """)
+        }
+
         return migrator
     }
 }

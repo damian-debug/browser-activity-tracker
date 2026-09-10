@@ -77,7 +77,7 @@ final class AppModel {
             guard let self else { return }
             Task {
                 if isIdle {
-                    await self.coordinator.pause(.idle)
+                    await self.coordinator.pause(.idle, at: Self.lastInputAt)
                 } else {
                     await self.coordinator.resume(.idle)
                 }
@@ -87,14 +87,14 @@ final class AppModel {
         power.onScreenLocked = { [weak self] locked in
             guard let self else { return }
             Task {
-                if locked { await self.coordinator.pause(.screenLocked) }
+                if locked { await self.coordinator.pause(.screenLocked, at: Self.lastInputAt) }
                 else { await self.coordinator.resume(.screenLocked) }
             }
         }
         power.onDisplayAsleep = { [weak self] asleep in
             guard let self else { return }
             Task {
-                if asleep { await self.coordinator.pause(.displayAsleep) }
+                if asleep { await self.coordinator.pause(.displayAsleep, at: Self.lastInputAt) }
                 else { await self.coordinator.resume(.displayAsleep) }
             }
         }
@@ -108,6 +108,8 @@ final class AppModel {
         sampler.start()
         idle.start()
         power.start()
+
+        askForAccessibilityOnce()
 
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
@@ -304,12 +306,41 @@ final class AppModel {
         await refresh()
     }
 
+    /// When the person last touched the keyboard, mouse or trackpad.
+    ///
+    /// Every "they have gone" signal — idle, screen lock, display sleep — is
+    /// noticed after the fact: idle only once the threshold has elapsed, and
+    /// an automatic lock or display sleep only after their own timeout. Dating
+    /// the pause from here is what stops each break crediting that wait as work.
+    private static var lastInputAt: Date {
+        Date().addingTimeInterval(-IdleMonitor.secondsSinceLastInput)
+    }
+
     // ── Permissions ──────────────────────────────────────────────────────
 
     /// Ask for Accessibility. macOS only shows a signpost to System Settings —
     /// there is no programmatic grant and no completion callback, so the answer
     /// shows up as `accessibilityTrusted` flipping on a later refresh.
     func requestAccessibility() {
+        AccessibilityReader.requestAccess()
+    }
+
+    private static let askedForAccessibilityKey = "askedForAccessibility"
+
+    /// Show the system prompt on first launch, once.
+    ///
+    /// Leaving it to the popover banner meant people tracked for hours with no
+    /// window titles, because nothing ever asked and the banner is only seen
+    /// by opening the popover. Asking on every launch would be nagging, so
+    /// this asks once per install: the flag lives in preferences, which the
+    /// uninstaller removes along with the grant itself — so a reinstall asks
+    /// again even when tracked history was kept.
+    private func askForAccessibilityOnce() {
+        let defaults = UserDefaults.standard
+        guard !AccessibilityReader.isTrusted,
+              !defaults.bool(forKey: Self.askedForAccessibilityKey)
+        else { return }
+        defaults.set(true, forKey: Self.askedForAccessibilityKey)
         AccessibilityReader.requestAccess()
     }
 

@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import TimeTrackerCore
+import GRDB
 @testable import TimeTrackerApp
 
 // The store runs against a real in-memory SQLite database, so these exercise
@@ -252,5 +253,59 @@ struct StoreBackupTests {
         try store.apply(Backup.plan(incoming, existing: try store.backupContents(), mode: .merge))
 
         #expect(Set(try store.projects().map(\.id)) == ["local", "incoming"])
+    }
+}
+
+@Suite("Idle default migration")
+struct IdleDefaultMigrationTests {
+    /// A database as an older build left it, with settings saved.
+    func database(withIdle seconds: Int?) throws -> String {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("idle-migration-\(UUID().uuidString).sqlite").path
+        let queue = try DatabaseQueue(path: path)
+        try Schema.migrator().migrate(queue, upTo: "v6-rule-conditions")
+        if let seconds {
+            var settings = AppSettings.default
+            settings.idleThresholdSeconds = seconds
+            let json = String(decoding: try JSONEncoder().encode(settings), as: UTF8.self)
+            try queue.write {
+                try $0.execute(sql: "INSERT INTO appState (key, value) VALUES ('settings', ?)",
+                               arguments: [json])
+            }
+        }
+        return path
+    }
+
+    @Test("the old one-minute default is lifted to five")
+    func liftsOldDefault() throws {
+        let store = try TrackerStore(path: try database(withIdle: 60))
+        #expect(store.settings().idleThresholdSeconds == 300)
+    }
+
+    @Test("a deliberately chosen value is left alone")
+    func keepsChoice() throws {
+        let store = try TrackerStore(path: try database(withIdle: 120))
+        #expect(store.settings().idleThresholdSeconds == 120)
+    }
+
+    @Test("with nothing saved, the new default applies")
+    func nothingSaved() throws {
+        let store = try TrackerStore(path: try database(withIdle: nil))
+        #expect(store.settings().idleThresholdSeconds == 300)
+    }
+
+    @Test("other saved settings survive the migration")
+    func othersSurvive() throws {
+        let path = try database(withIdle: 60)
+        let queue = try DatabaseQueue(path: path)
+        try queue.write {
+            try $0.execute(sql: """
+                UPDATE appState SET value = json_set(value, '$.reviewConfidenceThreshold', 85)
+                WHERE key = 'settings'
+                """)
+        }
+        let store = try TrackerStore(path: path)
+        #expect(store.settings().reviewConfidenceThreshold == 85)
+        #expect(store.settings().idleThresholdSeconds == 300)
     }
 }

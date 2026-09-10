@@ -209,3 +209,101 @@ struct CheckpointTests {
         #expect(session.duration(at: at(150)) == 150)
     }
 }
+
+@Suite("Pausing from the last input")
+struct BackdatedPauseTests {
+    // The idle threshold only fires once it has elapsed, so the pause arrives
+    // dated in the past: "they left at their last keystroke". These pin down
+    // that the wait itself is never credited as work.
+
+    @Test("a break credits nothing past the last input, even across checkpoints")
+    func refundsBankedTime() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        // Working for 10 minutes, then gone. Heartbeats keep banking every 30s
+        // for the 5 minutes it takes the idle threshold to notice.
+        for t in stride(from: 30, through: 900, by: 30) { session.checkpoint(at: at(t)) }
+        session.pause(.idle, at: at(600))
+
+        #expect(session.duration(at: at(900)) == 600)
+        #expect(session.duration(at: at(5000)) == 600, "and nothing accrues while away")
+    }
+
+    @Test("without checkpoints in between, it is the same answer")
+    func noCheckpoints() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        session.pause(.idle, at: at(600))
+        #expect(session.duration(at: at(900)) == 600)
+    }
+
+    @Test("returning resumes from the moment you are back")
+    func resume() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        session.checkpoint(at: at(800))
+        session.pause(.idle, at: at(600))
+        session.resume(.idle, at: at(2000))
+        session.checkpoint(at: at(2100))
+
+        #expect(session.duration(at: at(2400)) == 600 + 400)
+    }
+
+    @Test("a session that began after you left credits nothing")
+    func startedWhileAway() {
+        // e.g. a window changed under you while you were away.
+        var session = ActiveSession(snapshot: browserSnapshot(), now: at(700))
+        session.checkpoint(at: at(800))
+        session.pause(.idle, at: at(600))
+        #expect(session.duration(at: at(900)) == 0)
+    }
+
+    @Test("never takes back time from before an earlier pause")
+    func boundedByCurrentRun() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        session.pause(.screenLocked, at: at(300))       // 300s banked
+        session.resume(.screenLocked, at: at(400))
+        session.checkpoint(at: at(500))                 // +100
+        // A pause dated before the lock even happened must not reach back
+        // into the first run: only the current run can be refunded.
+        session.pause(.idle, at: at(100))
+        #expect(session.duration(at: at(600)) == 300)
+    }
+
+    @Test("a second reason does not refund again")
+    func secondReason() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        session.checkpoint(at: at(900))
+        session.pause(.screenLocked, at: at(600))
+        session.pause(.idle, at: at(300))
+        #expect(session.duration(at: at(1000)) == 600)
+    }
+
+    @Test("the last-checkpoint clock is never wound backwards")
+    func checkpointNotRewound() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        session.checkpoint(at: at(900))
+        session.pause(.idle, at: at(600))
+        #expect(session.lastCheckpoint == at(900))
+        // So the wake-gap rule does not mistake a backdated pause for sleep.
+        #expect(session.decideGap(now: at(920)) == .credit)
+    }
+
+    @Test("a session saved by an older build, without activeSince, still restores")
+    func restoresOldCheckpoint() throws {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        session.checkpoint(at: at(60))
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(session)) as! [String: Any]
+        json.removeValue(forKey: "activeSince")
+        let data = try JSONSerialization.data(withJSONObject: json)
+
+        var restored = try JSONDecoder().decode(ActiveSession.self, from: data)
+        #expect(restored.activeSince == nil)
+        // Falls back to the open segment: it can under-refund, never over-refund.
+        restored.checkpoint(at: at(120))
+        restored.pause(.idle, at: at(90))
+        #expect(restored.duration(at: at(200)) == 120)
+    }
+
+    @Test("the idle threshold defaults to five minutes")
+    func fiveMinuteDefault() {
+        #expect(AppSettings.default.idleThresholdSeconds == 300)
+    }
+}

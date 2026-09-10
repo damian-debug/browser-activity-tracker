@@ -2,6 +2,11 @@ import Foundation
 
 public struct AppSettings: Hashable, Sendable, Codable {
     /// Stop counting after this much inactivity.
+    ///
+    /// Five minutes, so reading, watching or thinking without touching the
+    /// keyboard still counts. Generous is only safe because the pause is
+    /// dated back to the last input: a long break does not credit the
+    /// threshold itself as work.
     public var idleThresholdSeconds: Int
 
     /// Sessions assigned below this confidence (or unassigned/unreviewed)
@@ -33,7 +38,7 @@ public struct AppSettings: Hashable, Sendable, Codable {
     public var learningEnabled: Bool
 
     public init(
-        idleThresholdSeconds: Int = 60,
+        idleThresholdSeconds: Int = 300,
         reviewConfidenceThreshold: Int = 70,
         excludedDomains: [String] = ["localhost", "127.0.0.1", "0.0.0.0"],
         excludedAppBundleIDs: [String] = [],

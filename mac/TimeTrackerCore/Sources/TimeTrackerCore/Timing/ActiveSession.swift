@@ -36,6 +36,15 @@ public struct ActiveSession: Hashable, Sendable, Codable {
     /// on wake to decide whether the gap was work or a sleeping machine.
     public private(set) var lastCheckpoint: Date
 
+    /// When the current unbroken run of accrual began; nil while paused.
+    ///
+    /// Unlike `segmentStart`, checkpoints never move it. That is what lets a
+    /// pause dated in the past take back time a checkpoint has already
+    /// banked: idle is only noticed once the threshold has passed, and by then
+    /// several checkpoints have credited minutes nobody was at the keyboard.
+    /// Optional so a session persisted by an older build still restores.
+    public private(set) var activeSince: Date?
+
     /// Manual timers in "keep counting while I'm away" mode ignore idle, so
     /// meetings and phone calls still accrue. Deliberately opt-in: it breaks
     /// the accuracy-first rule, so sessions recorded this way are marked.
@@ -52,7 +61,8 @@ public struct ActiveSession: Hashable, Sendable, Codable {
         segmentStart: Date?,
         pauseReasons: PauseReasons,
         lastCheckpoint: Date,
-        ignoresIdle: Bool
+        ignoresIdle: Bool,
+        activeSince: Date? = nil
     ) {
         self.id = id
         self.target = target
@@ -64,6 +74,7 @@ public struct ActiveSession: Hashable, Sendable, Codable {
         self.pauseReasons = pauseReasons
         self.lastCheckpoint = lastCheckpoint
         self.ignoresIdle = ignoresIdle
+        self.activeSince = activeSince
     }
 
     public init(
@@ -82,6 +93,7 @@ public struct ActiveSession: Hashable, Sendable, Codable {
         self.accumulatedSeconds = 0
         self.pauseReasons = pauseReasons
         self.segmentStart = pauseReasons.isEmpty ? now : nil
+        self.activeSince = pauseReasons.isEmpty ? now : nil
         self.lastCheckpoint = now
         self.ignoresIdle = ignoresIdle
     }
@@ -109,8 +121,13 @@ public struct ActiveSession: Hashable, Sendable, Codable {
         max(0, Int(end.timeIntervalSince(start)))
     }
 
-    /// Suspend accrual. Only the first reason banks the open segment; later
-    /// reasons just record that they also apply.
+    /// Suspend accrual as of `date`. Only the first reason banks the open
+    /// segment; later reasons just record that they also apply.
+    ///
+    /// `date` may be in the past — "the user left at their last keystroke",
+    /// learned only when the idle threshold fires. Anything credited after it
+    /// is taken back, including time a checkpoint has already banked, but
+    /// never from before this run of accrual began.
     public mutating func pause(_ reason: PauseReasons, at date: Date = Date()) {
         if reason == .idle && ignoresIdle { return }
 
@@ -118,10 +135,19 @@ public struct ActiveSession: Hashable, Sendable, Codable {
         pauseReasons.insert(reason)
 
         if !wasPaused, let segmentStart {
-            accumulatedSeconds += Self.elapsedSeconds(from: segmentStart, to: date)
+            if date >= segmentStart {
+                accumulatedSeconds += Self.elapsedSeconds(from: segmentStart, to: date)
+            } else {
+                let from = max(date, activeSince ?? segmentStart)
+                let overCredited = Self.elapsedSeconds(from: from, to: segmentStart)
+                accumulatedSeconds = max(0, accumulatedSeconds - overCredited)
+            }
             self.segmentStart = nil
+            activeSince = nil
         }
-        lastCheckpoint = date
+        // Never moved backwards: it records when the clock was last
+        // reconciled, and a backdated pause does not un-reconcile it.
+        lastCheckpoint = max(lastCheckpoint, date)
     }
 
     /// Clear one reason. The clock only restarts once every reason has cleared.
@@ -129,6 +155,7 @@ public struct ActiveSession: Hashable, Sendable, Codable {
         pauseReasons.remove(reason)
         if pauseReasons.isEmpty && segmentStart == nil {
             segmentStart = date
+            activeSince = date
         }
         lastCheckpoint = date
     }

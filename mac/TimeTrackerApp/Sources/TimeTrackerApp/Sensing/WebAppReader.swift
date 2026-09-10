@@ -43,9 +43,14 @@ enum WebAppReader {
             // Chromium ships a stub tree of empty groups until a client asks
             // for the real one. Without this, these apps look like they expose
             // nothing at all.
-            AXUIElementSetAttributeValue(
+            let result = AXUIElementSetAttributeValue(
                 app, "AXManualAccessibility" as CFString, kCFBooleanTrue
             )
+            // Only remember success. Before Accessibility is granted this call
+            // is refused, and marking the app done anyway meant it was never
+            // asked again: grant permission while Claude is already open and
+            // its conversations stayed untitled until the tracker restarted.
+            guard result == .success else { return WebContent() }
             enabledApps.insert(pid)
             // The tree is not built synchronously; this sample will come back
             // empty and the next one, two seconds later, will not.

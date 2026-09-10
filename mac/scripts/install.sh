@@ -95,11 +95,12 @@ else
     printf '\033[32mInstalled %s.\033[0m Look for the timer in your menu bar.\n' "$VERSION"
     cat <<'NOTE'
 
-One thing left to do: the app will ask for Accessibility permission.
+One thing left to do: the app is asking for Accessibility permission now.
 Without it, it can only see which app you are in — with it, it can also see
 window titles and open files, which is what makes attribution to a project work.
 
-  System Settings > Privacy & Security > Accessibility > enable Activity Tracker
+Click "Open System Settings" in that prompt, then switch on Activity Tracker under
+  Privacy & Security > Accessibility
 
 Everything stays on this Mac. The app makes no network requests at all,
 and nothing is shared with anyone unless you export it yourself.
