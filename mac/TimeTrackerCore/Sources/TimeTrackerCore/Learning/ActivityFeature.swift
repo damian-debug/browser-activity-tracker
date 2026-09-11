@@ -101,11 +101,19 @@ public enum FeatureExtractor {
     }
 
     public static func features(for session: Session) -> [ActivityFeature] {
-        let parsed: ParsedEntity?
+        var stored: ParsedEntity?
         if let service = session.service, let id = session.detectedEntityId {
-            parsed = ParsedEntity(service: service, entityId: id, entityName: session.detectedEntityName)
-        } else {
-            parsed = nil
+            stored = ParsedEntity(service: service, entityId: id, entityName: session.detectedEntityName)
+        }
+        // A session does not store the screen within its entity, only the URL.
+        // Rebuilding from the stored fields alone dropped it, so no screen or
+        // page was ever learned from a finished session — the place feature
+        // was looked up while tracking but never recorded. Re-parse the URL to
+        // recover it, trusting it only where it agrees with what was stored.
+        var parsed = stored
+        if let reparsed = session.url.flatMap(ParserRegistry.parse),
+           stored == nil || (reparsed.service == stored?.service && reparsed.entityId == stored?.entityId) {
+            parsed = reparsed
         }
         return features(
             bundleID: session.appBundleID,

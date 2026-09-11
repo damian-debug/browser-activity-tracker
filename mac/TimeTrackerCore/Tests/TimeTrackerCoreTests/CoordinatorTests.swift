@@ -41,6 +41,14 @@ actor FakeDependencies: TrackingDependencies {
 
     func setOverride(_ value: ActiveProjectOverride?) { override = value }
     func setAssociations(_ value: [FeatureAssociation]) { associations = value }
+
+    var featureIdsByProject: [String: Set<String>] = [:]
+    var chosenFeature: (id: String, projectId: String, name: String)?
+    func featureIds(ofProject projectId: String) async -> Set<String> { featureIdsByProject[projectId] ?? [] }
+    func projectName(_ id: String) async -> String? { projects[id]?.name }
+    func currentFeature() async -> (id: String, projectId: String, name: String)? { chosenFeature }
+    func setFeatureIds(_ ids: Set<String>, of projectId: String) { featureIdsByProject[projectId] = ids }
+    func choose(feature: (id: String, projectId: String, name: String)?) { chosenFeature = feature }
 }
 
 private let base = Date(unixMillis: 1_700_000_000_000)
@@ -708,5 +716,174 @@ struct CoordinatorCorrectionTests {
             now: at(300)
         )
         #expect(await coordinator.suggestionForCurrentSession() == nil)
+    }
+}
+
+@Suite("Screens within one project")
+struct ScreenSplitTests {
+    // One Framer project; three screens. Pricing and Home each have a rule
+    // naming a feature; the third screen has nothing known about it.
+    static let project = "https://framer.com/projects/Acme-Site--FC91PjIN9PCSOTMJzDXU"
+    static func screen(_ node: String) -> ActivitySnapshot {
+        ActivitySnapshot(
+            bundleID: "com.google.Chrome", appName: "Google Chrome",
+            windowTitle: "Acme Site – Framer", url: "\(project)-5ODEx?node=\(node)"
+        )
+    }
+
+    func deps(extraRules: [ProjectRule] = []) -> FakeDependencies {
+        var projectRule = makeRule(type: .urlContains, value: "FC91PjIN9PCSOTMJzDXU", projectId: "acme", id: "project")
+        projectRule.priority = 0
+        var pricing = ProjectRule(id: "pricing-rule", projectId: "acme", featureId: "pricing", name: "Pricing",
+                                  conditions: [RuleCondition(type: .urlContains, value: "FC91PjIN9PCSOTMJzDXU"),
+                                               RuleCondition(type: .queryParamEquals, value: "PRICE", queryParamName: "node")])
+        pricing.priority = 1
+        var home = ProjectRule(id: "home-rule", projectId: "acme", featureId: "home", name: "Home",
+                               conditions: [RuleCondition(type: .urlContains, value: "FC91PjIN9PCSOTMJzDXU"),
+                                            RuleCondition(type: .queryParamEquals, value: "HOME", queryParamName: "node")])
+        home.priority = 1
+        return FakeDependencies(
+            rules: [projectRule, pricing, home] + extraRules,
+            projects: [Project(id: "acme", name: "Acme"),
+                       Project(id: "pricing", name: "Pricing", parentId: "acme"),
+                       Project(id: "home", name: "Home", parentId: "acme")]
+        )
+    }
+
+    @Test("moving to a screen that belongs to another feature starts a new session")
+    func splitsOnFeatureChange() async {
+        let deps = deps()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.screen("PRICE"), now: at(0))
+        await coordinator.observe(Self.screen("PRICE"), now: at(60))
+        await coordinator.observe(Self.screen("HOME"), now: at(120))
+        await coordinator.endSession(at: at(200))
+
+        let sessions = await deps.persisted
+        #expect(sessions.map(\.featureId) == ["pricing", "home"])
+        #expect(sessions.map(\.durationSeconds) == [120, 80])
+    }
+
+    @Test("clicking something nothing is known about stays in the current session")
+    func unknownScreenContinues() async {
+        let deps = deps()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.screen("PRICE"), now: at(0))
+        await coordinator.observe(Self.screen("SOME-BUTTON"), now: at(30))
+        await coordinator.observe(Self.screen("ANOTHER-FRAME"), now: at(60))
+        await coordinator.endSession(at: at(90))
+
+        let sessions = await deps.persisted
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.featureId == "pricing")
+        #expect(sessions.first?.durationSeconds == 90)
+    }
+
+    @Test("returning to a known screen of the same feature does not split")
+    func sameFeatureContinues() async {
+        let deps = deps()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.screen("PRICE"), now: at(0))
+        await coordinator.observe(Self.screen("SOME-BUTTON"), now: at(30))
+        await coordinator.observe(Self.screen("PRICE"), now: at(60))
+        await coordinator.endSession(at: at(90))
+        #expect(await deps.persisted.count == 1)
+    }
+
+    @Test("with no screen rules at all, a whole project visit is one session")
+    func noScreenKnowledge() async {
+        let deps = FakeDependencies(
+            rules: [makeRule(type: .urlContains, value: "FC91PjIN9PCSOTMJzDXU", projectId: "acme")],
+            projects: [Project(id: "acme", name: "Acme")]
+        )
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        for (i, node) in ["A", "B", "C", "D"].enumerated() {
+            await coordinator.observe(Self.screen(node), now: at(i * 30))
+        }
+        await coordinator.endSession(at: at(120))
+        #expect(await deps.persisted.count == 1)
+        #expect(await deps.persisted.first?.durationSeconds == 120)
+    }
+
+    @Test("a feature you picked yourself is never split away by a screen change")
+    func chosenFeatureHolds() async {
+        // No screen rules here: the popover choice is what is being tested.
+        let deps = FakeDependencies(
+            rules: [makeRule(type: .urlContains, value: "FC91PjIN9PCSOTMJzDXU", projectId: "acme")],
+            projects: [Project(id: "acme", name: "Acme"), Project(id: "checkout", name: "Checkout", parentId: "acme")]
+        )
+        await deps.setAssociations([
+            FeatureAssociation(feature: "place:framer::FC91PjIN9PCSOTMJzDXU#LEARNT", projectId: "home",
+                               mass: 40, observations: 30, lastUpdated: at(0)),
+        ])
+        await deps.setFeatureIds(["checkout", "home"], of: "acme")
+        await deps.choose(feature: (id: "checkout", projectId: "acme", name: "Checkout"))
+
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.screen("PRICE"), now: at(0))
+        await coordinator.observe(Self.screen("LEARNT"), now: at(60))
+        await coordinator.endSession(at: at(120))
+
+        #expect(await deps.persisted.map(\.featureId) == ["checkout"],
+                "what you said beats what the model inferred")
+    }
+
+    @Test("a feature the model guessed is not fed back to it as evidence")
+    func guessedFeatureNotLearned() async {
+        let deps = deps()
+        await deps.setAssociations([
+            FeatureAssociation(feature: "place:framer::FC91PjIN9PCSOTMJzDXU#LEARNT", projectId: "home",
+                               mass: 40, observations: 30, lastUpdated: at(0)),
+        ])
+        await deps.setFeatureIds(["pricing", "home"], of: "acme")
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.screen("LEARNT"), now: at(0))
+        await coordinator.endSession(at: at(60))
+
+        #expect(await deps.persisted.first?.featureId == "home", "the guess is still applied")
+        let recorded = await deps.recorded
+        #expect(!recorded.isEmpty, "the rule-assigned project is still learned")
+        #expect(!recorded.contains { $0.projectId == "home" }, "but not the model's own guess")
+    }
+
+    @Test("a feature a rule assigned is learned from")
+    func ruleFeatureLearned() async {
+        let deps = deps()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.screen("PRICE"), now: at(0))
+        await coordinator.endSession(at: at(60))
+        #expect(await deps.recorded.contains { $0.projectId == "pricing" })
+    }
+
+    @Test("a feature picked in the popover is learned from, which is how screens get taught")
+    func chosenFeatureLearned() async {
+        let deps = FakeDependencies(
+            rules: [makeRule(type: .urlContains, value: "FC91PjIN9PCSOTMJzDXU", projectId: "acme")],
+            projects: [Project(id: "acme", name: "Acme"), Project(id: "checkout", name: "Checkout", parentId: "acme")]
+        )
+        await deps.choose(feature: (id: "checkout", projectId: "acme", name: "Checkout"))
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.screen("CART"), now: at(0))
+        await coordinator.endSession(at: at(60))
+        #expect(await deps.recorded.contains {
+            $0.projectId == "checkout" && $0.feature == "place:framer::FC91PjIN9PCSOTMJzDXU#CART"
+        })
+    }
+
+    @Test("a screen the model has learned splits too, once it is confident")
+    func learnedScreenSplits() async {
+        let deps = deps()
+        // Plenty of recent, exclusive evidence that node LEARNT is "home".
+        await deps.setAssociations([
+            FeatureAssociation(feature: "place:framer::FC91PjIN9PCSOTMJzDXU#LEARNT", projectId: "home",
+                               mass: 40, observations: 30, lastUpdated: at(0)),
+        ])
+        await deps.setFeatureIds(["pricing", "home"], of: "acme")
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.screen("PRICE"), now: at(0))
+        await coordinator.observe(Self.screen("LEARNT"), now: at(60))
+        await coordinator.endSession(at: at(120))
+
+        #expect(await deps.persisted.map(\.featureId) == ["pricing", "home"])
     }
 }

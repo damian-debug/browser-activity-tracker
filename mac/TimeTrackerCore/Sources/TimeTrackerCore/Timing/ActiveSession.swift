@@ -164,8 +164,14 @@ public struct ActiveSession: Hashable, Sendable, Codable {
     /// quit loses at most one interval.
     public mutating func checkpoint(at date: Date = Date()) {
         if let segmentStart {
-            accumulatedSeconds += Self.elapsedSeconds(from: segmentStart, to: date)
-            self.segmentStart = date
+            let banked = Self.elapsedSeconds(from: segmentStart, to: date)
+            accumulatedSeconds += banked
+            // Advance by exactly what was banked, not to `date`, so the part
+            // second left over carries into the next segment. Checkpoints run
+            // on every 2-second sample; moving to `date` threw that fraction
+            // away each time — about half a second in every two, which
+            // under-counted all tracked time by a fifth or more.
+            self.segmentStart = segmentStart.addingTimeInterval(TimeInterval(banked))
         }
         lastCheckpoint = date
     }

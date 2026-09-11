@@ -99,6 +99,11 @@ public actor ActivityCoordinator {
         }
 
         if let current, current.continues(snapshot) {
+            if await screenChangeMovesWork(current, to: snapshot, now: now) {
+                await endSession(at: now)
+                await startSession(snapshot, now: now)
+                return
+            }
             // Same work: keep accruing, and absorb any detail this observation
             // adds (a title that arrived once Accessibility was granted, a URL
             // that failed to read a moment ago).
@@ -113,16 +118,53 @@ public actor ActivityCoordinator {
 
     private func startSession(_ snapshot: ActivitySnapshot, now: Date) async {
         let override = await dependencies.currentOverride()
+        let (assignment, suggestion) = await attribute(snapshot, override: override, now: now)
+        currentSuggestion = suggestion
+        current = ActiveSession(
+            snapshot: snapshot,
+            assignment: assignment,
+            pauseReasons: globalPauseReasons,
+            ignoresIdle: override?.countsWhileAway ?? false,
+            now: now
+        )
+    }
+
+    /// Moving between screens of one project normally stays one session: the
+    /// project is the work, and clicking around inside it is not new work.
+    /// But when the new screen is attributed somewhere else — a rule or the
+    /// model puts it on a different feature — the time from here on belongs
+    /// there. Only a screen that resolves to something different splits; one
+    /// nothing is known about stays with the session it is part of.
+    private func screenChangeMovesWork(
+        _ current: ActiveSession, to snapshot: ActivitySnapshot, now: Date
+    ) async -> Bool {
+        guard let screen = snapshot.parsed?.subEntityId,
+              screen != current.snapshot.parsed?.subEntityId
+        else { return false }
+
+        let override = await dependencies.currentOverride()
+        let (next, _) = await attribute(snapshot, override: override, now: now)
+        if let project = next.projectId, project != current.assignment.projectId { return true }
+        if let feature = next.featureId, feature != current.assignment.featureId { return true }
+        return false
+    }
+
+    /// Who this activity's time belongs to: project, then feature. The single
+    /// source of truth for attribution, so starting a session and deciding
+    /// whether a new screen is different work can never disagree.
+    private func attribute(
+        _ snapshot: ActivitySnapshot, override: ActiveProjectOverride?, now: Date
+    ) async -> (Assignment, LearnedSuggestion?) {
         let rules = await dependencies.enabledRules()
         var result = SessionAssigner.assign(snapshot, rules: rules, override: override, now: now)
 
         // Only fall back to what has been learned when nothing explicit
         // matched. A rule the user wrote always wins over a pattern inferred
         // from their history.
-        currentSuggestion = nil
+        var learnedProject: LearnedSuggestion?
         if result.projectId == nil, settings.learningEnabled {
             if let suggestion = await suggest(for: snapshot, now: now) {
-                currentSuggestion = suggestion
+                learnedProject = suggestion
                 result = RuleEngineResult(
                     projectId: suggestion.projectId,
                     assignmentSource: .suggested,
@@ -146,6 +188,7 @@ public actor ActivityCoordinator {
         // is an ordinary, expressible outcome rather than an all-or-nothing bet.
         var featureId: String?
         var featureName: String?
+        var featureWasInferred = false
 
         // A rule that names a feature has said so explicitly; nothing should
         // second-guess it.
@@ -162,6 +205,7 @@ public actor ActivityCoordinator {
                       let feature = await suggestFeature(for: snapshot, ofProject: projectId, now: now) {
                 featureId = feature.projectId
                 featureName = await dependencies.projectName(feature.projectId)
+                featureWasInferred = true
             }
         }
 
@@ -176,14 +220,9 @@ public actor ActivityCoordinator {
             tagIds: result.defaultTagIds ?? [],
             billable: billable
         )
-
-        current = ActiveSession(
-            snapshot: snapshot,
-            assignment: assignment,
-            pauseReasons: globalPauseReasons,
-            ignoresIdle: override?.countsWhileAway ?? false,
-            now: now
-        )
+        var attributed = assignment
+        attributed.featureWasInferred = featureWasInferred ? true : nil
+        return (attributed, learnedProject)
     }
 
     /// Ask the model what this activity probably is.
@@ -235,7 +274,7 @@ public actor ActivityCoordinator {
         currentSuggestion = nil
         if let finished = session.finalized(at: date, settings: settings, now: date) {
             await dependencies.persist(finished)
-            await learn(from: finished)
+            await learn(from: finished, featureWasInferred: session.assignment.featureWasInferred == true)
         }
     }
 
@@ -246,7 +285,7 @@ public actor ActivityCoordinator {
     /// first, and grows more certain the longer it is wrong. Only decisions
     /// carrying real human intent are recorded — a manual choice, a timer the
     /// user started, or a rule they wrote.
-    private func learn(from session: Session) async {
+    private func learn(from session: Session, featureWasInferred: Bool = false) async {
         guard settings.learningEnabled,
               let projectId = session.projectId,
               Self.isTrustworthyEvidence(session.assignmentSource)
@@ -256,7 +295,8 @@ public actor ActivityCoordinator {
         // Record against the feature too, so the narrower pass has something to
         // learn from. Features share the project id namespace, so this needs no
         // separate model.
-        if let featureId = session.featureId {
+        // Only a feature a person decided; never the model's own guess.
+        if let featureId = session.featureId, !featureWasInferred {
             observations += learned.observations(for: session, projectId: featureId)
         }
         await dependencies.record(observations)

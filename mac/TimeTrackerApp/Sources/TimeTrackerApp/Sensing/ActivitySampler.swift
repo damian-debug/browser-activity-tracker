@@ -142,7 +142,8 @@ final class ActivitySampler {
             haveTitles: AccessibilityReader.isTrusted,
             appChanged: appChanged,
             titleChanged: titleChanged,
-            haveCachedURL: cachedURL != nil
+            haveCachedURL: cachedURL != nil,
+            locationInURL: cachedURL.map(ParserRegistry.locationChangesWithoutTitle) ?? false
         )
         guard shouldRead else { return cachedURL }
         cachedURL = urlReader.url(forBundleID: bundleID)

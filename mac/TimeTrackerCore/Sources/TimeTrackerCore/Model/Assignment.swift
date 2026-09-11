@@ -28,6 +28,13 @@ public struct Assignment: Hashable, Sendable, Codable {
     public var tagIds: [String]
     public var billable: Bool
 
+    /// True when the feature is the model's guess rather than something a
+    /// person decided (a rule, or the feature picked in the popover). The
+    /// model must not learn from its own guesses — now that a learned screen
+    /// can also split a session, one that did would lock in its mistakes.
+    /// Optional so a session persisted by an older build still restores.
+    public var featureWasInferred: Bool?
+
     public init(
         projectId: String? = nil,
         projectName: String? = nil,

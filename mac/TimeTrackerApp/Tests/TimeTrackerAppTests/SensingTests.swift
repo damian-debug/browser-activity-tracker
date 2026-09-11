@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import TimeTrackerCore
 @testable import TimeTrackerApp
 
 @Suite("Browser URL read throttling")
@@ -11,6 +12,11 @@ struct URLReadPolicyTests {
         // First sample: nothing cached, so read.
         let first = policy.shouldRead(haveTitles: true, appChanged: true, titleChanged: true, haveCachedURL: false)
         #expect(first)
+
+        // The tick after a title change reads once more, in case the address
+        // lagged the title (see confirmsAfterTitleChange).
+        let confirm = policy.shouldRead(haveTitles: true, appChanged: false, titleChanged: false, haveCachedURL: true)
+        #expect(confirm)
 
         // Nothing changed: reuse the cached URL rather than spending an Apple Event.
         let quiet = policy.shouldRead(haveTitles: true, appChanged: false, titleChanged: false, haveCachedURL: true)
@@ -30,14 +36,15 @@ struct URLReadPolicyTests {
         var policy = URLReadPolicy()
         _ = policy.shouldRead(haveTitles: true, appChanged: true, titleChanged: true, haveCachedURL: false)
 
-        // Thirty minutes on one article at a 2s tick: no further reads at all.
+        // Thirty minutes on one article at a 2s tick: one read to confirm the
+        // address settled after the title arrived, then nothing at all.
         var reads = 0
         for _ in 0..<900 where policy.shouldRead(
             haveTitles: true, appChanged: false, titleChanged: false, haveCachedURL: true
         ) {
             reads += 1
         }
-        #expect(reads == 0)
+        #expect(reads == 1)
     }
 
     @Test("without titles, it falls back to a slow poll rather than every tick")
@@ -70,6 +77,40 @@ struct URLReadPolicyTests {
         var policy = URLReadPolicy()
         let forced = policy.shouldRead(haveTitles: true, appChanged: false, titleChanged: false, haveCachedURL: false)
         #expect(forced)
+    }
+
+    @Test("after a title change, the address is read once more to catch a lagging URL")
+    func confirmsAfterTitleChange() {
+        var policy = URLReadPolicy()
+        _ = policy.shouldRead(haveTitles: true, appChanged: true, titleChanged: true, haveCachedURL: false)
+        let titled = policy.shouldRead(haveTitles: true, appChanged: false, titleChanged: true, haveCachedURL: true)
+        let confirm = policy.shouldRead(haveTitles: true, appChanged: false, titleChanged: false, haveCachedURL: true)
+        let settled = policy.shouldRead(haveTitles: true, appChanged: false, titleChanged: false, haveCachedURL: true)
+        #expect(titled && confirm)
+        #expect(!settled, "one confirmation, not a new habit")
+    }
+
+    @Test("a Framer or Figma tab is watched, since its address moves without its title")
+    func watchesLocationPages() {
+        var policy = URLReadPolicy()
+        _ = policy.shouldRead(haveTitles: true, appChanged: true, titleChanged: true, haveCachedURL: false,
+                              locationInURL: true)
+        var reads = 0
+        for _ in 0..<30 where policy.shouldRead(   // one minute at a 2s tick
+            haveTitles: true, appChanged: false, titleChanged: false, haveCachedURL: true, locationInURL: true
+        ) {
+            reads += 1
+        }
+        // Every 4s: often enough to catch a screen change, far from every tick.
+        #expect(reads == 15)
+    }
+
+    @Test("which pages count as watched is decided by the parsers")
+    func watchedServices() {
+        #expect(ParserRegistry.locationChangesWithoutTitle("https://framer.com/projects/Acme--FC91PjIN9PCSOTMJzDXU?node=X"))
+        #expect(ParserRegistry.locationChangesWithoutTitle("https://www.figma.com/design/abc123/Acme?node-id=1-2"))
+        #expect(!ParserRegistry.locationChangesWithoutTitle("https://github.com/acme/site"))
+        #expect(!ParserRegistry.locationChangesWithoutTitle("https://framer.com/projects/folder/recent"))
     }
 }
 

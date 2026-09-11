@@ -65,7 +65,7 @@ The app is designed to be useful at every level, and asks for nothing up front.
 |---|---|---|
 | Default | Which app, for how long. Idle and lock detection. Manual timers | **None** |
 | Accessibility | Window titles and open document paths — per-project attribution *inside* one app | Accessibility |
-| Automation | Browser tab URLs, and with them Figma file / Bubble app detection | Automation, per browser |
+| Automation | Browser tab URLs, and with them Figma file / Framer project / Bubble app detection | Automation, per browser |
 
 Grant these from the app's popover, which only asks once a level is actually
 missing.
@@ -135,7 +135,7 @@ Pick the feature from the popover next to the project. It is deliberately
 own project is the one being tracked. You know which feature you are on; the
 Mac does not.
 
-Three signals help it learn which feature is which. None of them *are*
+Four signals help it learn which feature is which. None of them *are*
 features — they are evidence fed to the same learning layer as everything
 else, so picking "Payments" once while on `feature/payments` is what creates
 the association:
@@ -145,6 +145,15 @@ the association:
 | Ticket key | `ACME-123` in a URL or window title (Jira, Linear), or `repo#482` for GitHub issues and PRs |
 | Git branch | `.git/HEAD` beside the open document. Ignores main/master/develop, which name no feature |
 | Figma page | The `node-id` in a Figma URL, so one page of a file is distinguishable from another |
+| Framer screen | The `node` in a Framer editor URL, or the page path of a `*.framer.app` site |
+
+Figma and Framer tabs are titled after the file, never the screen, so while
+one is in front the browser's address is re-read every 4 seconds rather than
+only on title changes. Moving to a screen that a rule or the learned model
+puts on a different feature starts a new session; clicking anything nothing
+is known about stays in the current one, so a project visit does not
+fragment. The quickest way to teach screens is to pick the feature in the
+popover as you move between them.
 
 Git branch needs a document path, which Electron editors like VS Code do not
 expose — it works for Xcode and native editors today.

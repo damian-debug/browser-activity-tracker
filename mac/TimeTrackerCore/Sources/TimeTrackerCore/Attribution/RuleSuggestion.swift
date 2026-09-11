@@ -49,6 +49,15 @@ public enum RuleSuggester {
 
         // A parser-detected entity is the most precise thing available.
         if let service = session.service, let entityId = session.detectedEntityId {
+            // Narrower still: one screen or frame within it. The only way to
+            // give a screen its own feature, since titles never name it.
+            if let screen = screenCondition(for: session, service: service) {
+                suggestions.append(RuleSuggestion(
+                    label: "This screen of “\(session.detectedEntityName ?? entityId)”",
+                    conditions: [RuleCondition(type: .urlContains, value: entityId), screen]
+                ))
+            }
+
             switch service {
             case "bubble":
                 if let url = session.url, URLish.queryValue(url, name: "id") == entityId {
@@ -67,6 +76,15 @@ public enum RuleSuggester {
                             value: "figma.com/\(segments[1])/\(segments[2])"
                         ))
                     }
+                }
+            case "framer":
+                // The id alone: the name before it changes when the project
+                // is renamed, and a suffix after it comes and goes.
+                if let url = session.url, URLish.extractDomain(url)?.hasSuffix("framer.com") == true {
+                    suggestions.append(RuleSuggestion(
+                        label: "The Framer project “\(session.detectedEntityName ?? entityId)”",
+                        type: .urlContains, value: entityId
+                    ))
                 }
             default:
                 break
@@ -142,6 +160,25 @@ public enum RuleSuggester {
     /// Picks the longest word that is not the app's own name and not generic
     /// chrome, on the grounds that a channel or client name is usually the
     /// longest distinctive thing in "Slack | #acme-internal | Acme Corp".
+    /// The condition that pins a session to one screen within its entity, if
+    /// its URL carries one: a Figma frame, a Framer node, a page of a Framer
+    /// site. A site's home page is not offered — it would match every page.
+    static func screenCondition(for session: Session, service: String) -> RuleCondition? {
+        guard let url = session.url,
+              let screen = ParserRegistry.parse(url)?.subEntityId
+        else { return nil }
+        switch service {
+        case "figma":
+            return RuleCondition(type: .queryParamEquals, value: screen, queryParamName: "node-id")
+        case "framer" where URLish.queryValue(url, name: "node") == screen:
+            return RuleCondition(type: .queryParamEquals, value: screen, queryParamName: "node")
+        case "framer" where screen != "/":
+            return RuleCondition(type: .pathContains, value: screen)
+        default:
+            return nil
+        }
+    }
+
     static func distinctiveTitleWord(_ title: String, appName: String) -> String? {
         let appWords = Set(
             appName.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)

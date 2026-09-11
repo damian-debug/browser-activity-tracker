@@ -307,3 +307,50 @@ struct BackdatedPauseTests {
         #expect(AppSettings.default.idleThresholdSeconds == 300)
     }
 }
+
+@Suite("Checkpoints keep every part-second")
+struct CheckpointPrecisionTests {
+    @Test("frequent checkpoints at uneven intervals credit the full wall time")
+    func unevenSampling() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        // Samples every 2–2.9s, as the real sampler delivers them once
+        // Accessibility and browser reads are included.
+        var t = 0.0
+        let steps = [2.3, 2.7, 2.05, 2.9, 2.45, 2.6, 2.15, 2.85, 2.5, 2.2]
+        for i in 0..<48 {
+            t += steps[i % steps.count]
+            session.checkpoint(at: base.addingTimeInterval(t))
+        }
+        #expect(session.duration(at: base.addingTimeInterval(t)) == Int(t),
+                "at most the final part-second is ever missing")
+    }
+
+    @Test("a checkpoint every 1.9s for an hour loses nothing")
+    func worstCase() {
+        // The old behaviour banked 1s for each of these — half the hour gone.
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        var t = 0.0
+        while t + 1.9 <= 3600 {
+            t += 1.9
+            session.checkpoint(at: base.addingTimeInterval(t))
+        }
+        #expect(session.duration(at: at(3600)) == 3600)
+    }
+
+    @Test("pausing after many checkpoints is still exact")
+    func pauseAfterCheckpoints() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        for i in 1...100 { session.checkpoint(at: base.addingTimeInterval(Double(i) * 2.5)) }
+        session.pause(.screenLocked, at: base.addingTimeInterval(251))
+        #expect(session.duration(at: at(400)) == 251)
+    }
+
+    @Test("a backdated idle pause after many checkpoints refunds exactly")
+    func backdatedAfterCheckpoints() {
+        var session = ActiveSession(snapshot: browserSnapshot(), now: base)
+        for i in 1...360 { session.checkpoint(at: base.addingTimeInterval(Double(i) * 2.5)) }
+        // Last input at 600s; idle noticed at 900s.
+        session.pause(.idle, at: at(600))
+        #expect(session.duration(at: at(1000)) == 600)
+    }
+}
