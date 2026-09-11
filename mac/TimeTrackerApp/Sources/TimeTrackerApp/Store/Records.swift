@@ -173,7 +173,9 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord {
         id = s.id; appBundleID = s.appBundleID; appName = s.appName
         windowTitle = s.windowTitle; documentPath = s.documentPath
         gitBranch = s.gitBranch
-        url = s.url; domain = s.domain; title = s.title
+        // Every write goes through here — live sessions, edits, imported
+        // backups — so no path can store a credential-bearing address.
+        url = s.url.map(URLSanitizer.sanitized); domain = s.domain; title = s.title
         service = s.service; detectedEntityId = s.detectedEntityId
         detectedEntityName = s.detectedEntityName
         projectId = s.projectId; projectName = s.projectName

@@ -57,8 +57,11 @@ SRC="$TMP/unpacked/$APP_NAME"
 say "Verifying signature"
 codesign --verify --deep --strict "$SRC" 2>/dev/null \
     || die "The signature is not valid. Do not run this build; tell Damian."
-codesign -d -r- "$SRC" 2>&1 | grep -q "$EXPECTED_CERT_SHA1" \
-    || die "This build was signed by an unexpected certificate. Do not run it; tell Damian."
+# Test the code against OUR requirement (-R), naming the exact certificate.
+# Never read the hash out of the build's own declared requirement: the signer
+# writes that, so a build signed by anyone can simply declare this hash.
+codesign --verify --deep --strict -R="certificate leaf = H\"$EXPECTED_CERT_SHA1\"" "$SRC" 2>/dev/null \
+    || die "This build was not signed by Activity Tracker's certificate. Do not run it; tell Damian."
 say "Signature verified"
 
 # Belt and braces: if someone fetched the zip through a browser first, the

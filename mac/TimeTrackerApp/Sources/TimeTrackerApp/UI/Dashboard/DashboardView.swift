@@ -609,6 +609,13 @@ private struct ConditionRow: View {
                     .textFieldStyle(.roundedBorder)
                     .padding(.leading, 64)
             }
+
+            if let problem = condition.problem {
+                Text(problem)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.leading, 64)
+            }
         }
     }
 

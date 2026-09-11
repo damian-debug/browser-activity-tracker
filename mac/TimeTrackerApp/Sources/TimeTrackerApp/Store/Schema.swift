@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import TimeTrackerCore
 
 /// Database schema and migrations.
 ///
@@ -180,6 +181,20 @@ enum Schema {
                 WHERE key = 'settings'
                   AND json_extract(value, '$.idleThresholdSeconds') = 60
                 """)
+        }
+
+        // Addresses recorded before URLs were cleaned at capture. Only rows that
+        // actually change are rewritten; what is removed is sign-in codes,
+        // re-auth tokens and the like — expired, and never needed again.
+        migrator.registerMigration("v8-strip-url-credentials") { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT id, url FROM session WHERE url LIKE '%?%' OR url LIKE '%#%'")
+            for row in rows {
+                guard let url: String = row["url"] else { continue }
+                let clean = URLSanitizer.sanitized(url)
+                guard clean != url else { continue }
+                try db.execute(sql: "UPDATE session SET url = ? WHERE id = ?",
+                               arguments: [clean, row["id"] as String])
+            }
         }
 
         return migrator

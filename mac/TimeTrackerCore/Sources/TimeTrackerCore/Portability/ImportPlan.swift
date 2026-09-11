@@ -49,7 +49,7 @@ public extension Backup {
                 mode: .replace,
                 projects: contents.projects,
                 tags: contents.tags,
-                rules: contents.rules,
+                rules: contents.rules.map { $0.disablingUnusableRegex() },
                 sessions: contents.sessions,
                 skipped: 0,
                 // Replacing adopts the backup's settings; merging keeps this
@@ -66,7 +66,7 @@ public extension Backup {
                 mode: .merge,
                 projects: projects.keep,
                 tags: tags.keep,
-                rules: rules.keep,
+                rules: rules.keep.map { $0.disablingUnusableRegex() },
                 sessions: sessions.keep,
                 skipped: projects.skipped + tags.skipped + rules.skipped + sessions.skipped,
                 settings: nil

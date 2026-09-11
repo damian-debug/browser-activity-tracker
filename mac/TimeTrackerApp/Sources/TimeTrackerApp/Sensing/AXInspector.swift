@@ -1,6 +1,12 @@
 import AppKit
 import ApplicationServices
 
+// Development builds only. It reads every visible string of the frontmost app
+// and writes it to disk, switched on by a marker file any process can create —
+// in a shipped build that would let unprivileged code have the tracker, which
+// holds Accessibility, read other apps' screens on its behalf.
+#if DEBUG
+
 /// Dumps what the Accessibility tree actually exposes for the frontmost app.
 ///
 /// Only the tracker holds the Accessibility grant, so this has to live inside
@@ -195,3 +201,4 @@ enum AXInspector {
         return flattened.count > limit ? String(flattened.prefix(limit)) + "…" : flattened
     }
 }
+#endif

@@ -163,11 +163,9 @@ public enum RuleEngine {
 
         case .regex:
             guard let url = context.url else { return false }
-            // An invalid user-supplied pattern must never match, and must never
-            // throw inside the tracker.
-            guard let regex = try? NSRegularExpression(pattern: value) else { return false }
-            let range = NSRange(url.startIndex..., in: url)
-            return regex.firstMatch(in: url, range: range) != nil
+            // Invalid, over-long or runaway patterns never match and never
+            // stall the tracker; see SafeRegex.
+            return SafeRegex.matches(value, in: url)
 
         case .appBundleEquals:
             return context.appBundleID.caseInsensitiveCompare(value) == .orderedSame

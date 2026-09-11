@@ -13,6 +13,19 @@ public enum CSVExport {
         return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 
+    /// Text from the outside world — a window title, a URL, a name — can start
+    /// with `=`, `+`, `-` or `@` and be run as a formula when the file is opened
+    /// in Excel or Google Sheets. Sheets will even fetch a URL built from other
+    /// cells, quietly sending the sheet's contents to whoever titled the page.
+    /// A leading apostrophe makes it plain text, as OWASP advises. Applied only
+    /// to text columns; durations, dates and numbers are never touched.
+    public static func neutralized(_ value: String) -> String {
+        guard let first = value.unicodeScalars.first,
+              "=+-@\t\r".unicodeScalars.contains(first)
+        else { return value }
+        return "'" + value
+    }
+
     static let header = [
         "Date", "Start", "End", "Duration (seconds)",
         "Project", "Feature", "Client", "Tags", "Billable", "Reviewed",
@@ -48,29 +61,29 @@ public enum CSVExport {
                 // projectId is the source of truth; projectName is only a
                 // denormalised cache. Showing a stale name for time that is
                 // actually unassigned would be misleading on an invoice.
-                session.projectId == nil
+                neutralized(session.projectId == nil
                     ? "Unassigned"
-                    : (project?.name ?? session.projectName ?? "Unknown project"),
-                session.featureId == nil
+                    : (project?.name ?? session.projectName ?? "Unknown project")),
+                neutralized(session.featureId == nil
                     ? ""
-                    : (projectsById[session.featureId!]?.name ?? session.featureName ?? ""),
-                project?.clientName ?? "",
-                session.tagIds.map { tagsById[$0]?.name ?? $0 }.joined(separator: ", "),
+                    : (projectsById[session.featureId!]?.name ?? session.featureName ?? "")),
+                neutralized(project?.clientName ?? ""),
+                neutralized(session.tagIds.map { tagsById[$0]?.name ?? $0 }.joined(separator: ", ")),
                 session.billable ? "yes" : "no",
                 session.reviewed ? "yes" : "no",
                 session.assignmentSource.rawValue,
                 String(session.assignmentConfidence),
-                session.appName,
-                session.windowTitle ?? "",
-                session.documentPath ?? "",
-                session.gitBranch ?? "",
-                session.domain ?? "",
-                session.service ?? "",
-                session.detectedEntityId ?? "",
-                session.detectedEntityName ?? "",
-                session.url ?? "",
+                neutralized(session.appName),
+                neutralized(session.windowTitle ?? ""),
+                neutralized(session.documentPath ?? ""),
+                neutralized(session.gitBranch ?? ""),
+                neutralized(session.domain ?? ""),
+                neutralized(session.service ?? ""),
+                neutralized(session.detectedEntityId ?? ""),
+                neutralized(session.detectedEntityName ?? ""),
+                neutralized(session.url ?? ""),
                 session.countedWhileAway ? "yes" : "no",
-                session.notes ?? "",
+                neutralized(session.notes ?? ""),
             ]
             rows.append(fields.map(escape).joined(separator: ","))
         }

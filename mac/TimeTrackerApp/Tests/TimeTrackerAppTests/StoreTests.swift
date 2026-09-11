@@ -309,3 +309,44 @@ struct IdleDefaultMigrationTests {
         #expect(store.settings().idleThresholdSeconds == 300)
     }
 }
+
+@Suite("No credentials in the database")
+struct StoredURLCredentialTests {
+    func session(_ url: String) -> Session {
+        Session(appBundleID: "com.google.Chrome", appName: "Google Chrome", url: url,
+                startTime: Date(), endTime: Date(), durationSeconds: 60)
+    }
+
+    @Test("a session is written without its sign-in code, whichever way it arrives")
+    func writePath() throws {
+        let store = try TrackerStore()
+        try store.save(session("https://linear.app/oauth/callback?code=abc&state=xyz"))
+        #expect(try store.sessions(from: .distantPast, to: .distantFuture).first?.url == "https://linear.app/oauth/callback")
+    }
+
+    @Test("sessions recorded before this are cleaned once, and nothing else changes")
+    func migration() throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("url-migration-\(UUID().uuidString).sqlite").path
+        let queue = try DatabaseQueue(path: path)
+        try Schema.migrator().migrate(queue, upTo: "v7-idle-five-minutes")
+        let rows = [
+            ("dirty", "https://accounts.google.com/signin/oauth/id?authuser=0&part=P&rapt=R"),
+            ("bubble", "https://bubble.io/page?id=meltx&name=gp-portal"),
+            ("plain", "https://example.com/"),
+        ]
+        try queue.write { db in
+            for (id, url) in rows {
+                try db.execute(sql: """
+                    INSERT INTO session (id, appBundleID, appName, url, title, assignmentSource, startTime, endTime, durationSeconds, createdAt, updatedAt)
+                    VALUES (?, 'com.google.Chrome', 'Chrome', ?, '', 'unassigned', 0, 60, 60, 0, 0)
+                    """, arguments: [id, url])
+            }
+        }
+        let store = try TrackerStore(path: path)   // runs v8
+        let urls = Dictionary(uniqueKeysWithValues: try store.sessions(from: .distantPast, to: .distantFuture).map { ($0.id, $0.url ?? "") })
+        #expect(urls["dirty"] == "https://accounts.google.com/signin/oauth/id?authuser=0")
+        #expect(urls["bubble"] == "https://bubble.io/page?id=meltx&name=gp-portal")
+        #expect(urls["plain"] == "https://example.com/")
+    }
+}

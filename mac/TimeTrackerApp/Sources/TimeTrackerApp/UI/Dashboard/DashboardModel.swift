@@ -39,6 +39,14 @@ final class DashboardModel {
                 !value.trimmingCharacters(in: .whitespaces).isEmpty
                     && (type != .queryParamEquals
                         || !queryParamName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    && problem == nil
+            }
+
+            /// Shown under the field when the value cannot be saved as it is.
+            var problem: String? {
+                type == .regex && !value.isEmpty
+                    ? SafeRegex.problem(with: value.trimmingCharacters(in: .whitespaces))
+                    : nil
             }
 
             var resolved: RuleCondition {

@@ -36,16 +36,14 @@ esac
 
 echo "==> Verifying signature"
 codesign --verify --deep --strict "$APP"
-DR=$(codesign -d -r- "$APP" 2>&1 | grep '^designated')
-echo "    $DR"
-case "$DR" in
-    *"$EXPECTED_CERT_SHA1"*) ;;
-    *)
-        echo "ERROR: signed with an unexpected certificate." >&2
-        echo "       Every teammate would have to re-grant Accessibility." >&2
-        exit 1
-        ;;
-esac
+# Checked against our requirement (-R), not by reading the build's declared
+# one, which the signer controls. See scripts/install.sh.
+if ! codesign --verify --deep --strict -R="certificate leaf = H\"$EXPECTED_CERT_SHA1\"" "$APP" 2>/dev/null; then
+    echo "ERROR: not signed with the pinned certificate." >&2
+    echo "       Every teammate would have to re-grant Accessibility." >&2
+    exit 1
+fi
+echo "    signed with the pinned certificate"
 
 # install.sh carries the same hash so it can reject a tampered download. If the
 # signing identity is ever rotated, both sides must move together.

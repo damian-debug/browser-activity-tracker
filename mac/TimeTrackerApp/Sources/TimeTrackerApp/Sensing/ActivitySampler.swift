@@ -90,9 +90,12 @@ final class ActivitySampler {
 
         var url: String?
         if let webURL = web.url {
-            url = webURL
+            url = URLSanitizer.sanitized(webURL)
         } else if BrowserURLReader.isBrowser(bundleID) {
+            // Cleaned at capture, so rules, continuity and the learned model
+            // only ever see the address without its secrets.
             url = browserURL(for: bundleID, appChanged: appChanged, titleChanged: titleChanged)
+                .map(URLSanitizer.sanitized)
         } else {
             cachedURL = nil
         }
@@ -151,7 +154,9 @@ final class ActivitySampler {
     }
 
     private func emit() {
+        #if DEBUG
         AXInspector.dumpFrontmostApp()
+        #endif
         guard let snapshot = currentSnapshot() else { return }
         onChange?(snapshot)
     }

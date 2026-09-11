@@ -59,7 +59,9 @@ permission to read the address of the current page, per browser.
 
 ### What this does with your data
 
-Everything stays in a database on your own Mac. The app makes no network
+Everything stays in a database on your own Mac. Sign-in codes, invite codes
+and similar secrets are stripped from web addresses before anything is stored,
+so they never end up in an export. The app makes no network
 requests of any kind — there is no account, no server, and nobody else can see
 your activity. If you want to share hours with someone, you export the rows you
 choose, yourself, from the dashboard.
