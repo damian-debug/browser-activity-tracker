@@ -12,7 +12,9 @@ CONFIG="${1:-debug}"
 APP_NAME="Activity Tracker"
 BUNDLE_ID="studio.goodspeed.timetracker"
 VERSION="${VERSION:-0.1.0}"
-APP="build/${APP_NAME}.app"
+# ".noindex" keeps Spotlight — and so Launchpad and Spotlight search — from
+# listing this build as a second copy of the app next to the installed one.
+APP="build.noindex/${APP_NAME}.app"
 
 # Release builds go to other people's Macs, so they are universal. An
 # arm64-only binary does not launch on an Intel Mac and the failure is opaque

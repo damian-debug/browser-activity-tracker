@@ -11,7 +11,7 @@ Installing it on a teammate's Mac: see [INSTALL.md](INSTALL.md).
 |---|---|
 | `TimeTrackerCore/` | Pure domain logic — models, rule engine, timing, aggregation, backup. No AppKit, no dependencies, runs under `swift test` |
 | `TimeTrackerApp/` | The app — sensing, GRDB store, menu bar UI |
-| `make-app.sh` | Assembles `build/Activity Tracker.app` |
+| `make-app.sh` | Assembles `build.noindex/Activity Tracker.app` (the suffix keeps Spotlight from listing it as a second copy) |
 | `make-release.sh` | Packages a signed universal build for the team |
 | `scripts/install.sh` | What teammates run to install and update |
 | `scripts/uninstall.sh` | Removes the app, login item, permissions and preferences; asks about data |
@@ -23,7 +23,7 @@ Installing it on a teammate's Mac: see [INSTALL.md](INSTALL.md).
 cd mac
 ./make-app.sh              # debug
 ./make-app.sh release      # release
-open "build/Activity Tracker.app"
+open "build.noindex/Activity Tracker.app"
 ```
 
 Tests:

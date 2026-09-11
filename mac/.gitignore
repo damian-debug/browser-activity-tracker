@@ -10,4 +10,5 @@ DerivedData/
 
 # Assembled .app bundles
 build/
+build.noindex/
 dist/

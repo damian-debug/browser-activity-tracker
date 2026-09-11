@@ -14,7 +14,7 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-APP="build/Activity Tracker.app"
+APP="build.noindex/Activity Tracker.app"
 DIST="dist"
 ZIP="${DIST}/ActivityTracker.zip"
 
