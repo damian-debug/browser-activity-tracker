@@ -52,9 +52,12 @@ public enum RuleSuggester {
             // Narrower still: one screen or frame within it. The only way to
             // give a screen its own feature, since titles never name it.
             if let screen = screenCondition(for: session, service: service) {
+                let label = service == "bubble"
+                    ? "The “\(ParserRegistry.parse(session.url ?? "")?.subEntityId ?? "")” page of \(entityId)"
+                    : "This screen of “\(session.detectedEntityName ?? entityId)”"
                 suggestions.append(RuleSuggestion(
-                    label: "This screen of “\(session.detectedEntityName ?? entityId)”",
-                    conditions: [RuleCondition(type: .urlContains, value: entityId), screen]
+                    label: label,
+                    conditions: [entityCondition(service: service, entityId: entityId), screen]
                 ))
             }
 
@@ -93,7 +96,7 @@ public enum RuleSuggester {
 
         // The folder a document lives in is usually exactly the project.
         if let documentPath = session.documentPath {
-            let folder = URL(fileURLWithPath: documentPath).deletingLastPathComponent().path
+            let folder = WorkSignals.folder(ofDocument: documentPath)
             if folder.count > 1 {
                 suggestions.append(RuleSuggestion(
                     label: "Anything in \(URL(fileURLWithPath: folder).lastPathComponent)",
@@ -168,6 +171,8 @@ public enum RuleSuggester {
               let screen = ParserRegistry.parse(url)?.subEntityId
         else { return nil }
         switch service {
+        case "bubble":
+            return RuleCondition(type: .queryParamEquals, value: screen, queryParamName: "name")
         case "figma":
             return RuleCondition(type: .queryParamEquals, value: screen, queryParamName: "node-id")
         case "framer" where URLish.queryValue(url, name: "node") == screen:
@@ -177,6 +182,16 @@ public enum RuleSuggester {
         default:
             return nil
         }
+    }
+
+    /// Pins the entity itself. Bubble's app id is a query parameter and short
+    /// enough to appear inside another app's id ("meltx" in "meltx-dev"), so
+    /// it is matched exactly; elsewhere the id is long and random enough that
+    /// appearing in the URL is proof.
+    static func entityCondition(service: String, entityId: String) -> RuleCondition {
+        service == "bubble"
+            ? RuleCondition(type: .queryParamEquals, value: entityId, queryParamName: "id")
+            : RuleCondition(type: .urlContains, value: entityId)
     }
 
     static func distinctiveTitleWord(_ title: String, appName: String) -> String? {

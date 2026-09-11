@@ -887,3 +887,71 @@ struct ScreenSplitTests {
         #expect(await deps.persisted.map(\.featureId) == ["pricing", "home"])
     }
 }
+
+@Suite("Query-only changes")
+struct QueryOnlyChangeTests {
+    static func chrome(_ url: String, title: String = "Dynamic AV Sandbox - UK Dealer") -> ActivitySnapshot {
+        ActivitySnapshot(bundleID: "com.google.Chrome", appName: "Google Chrome", windowTitle: title, url: url)
+    }
+    static let record = "https://app.hubspot.com/contacts/51325757/record/0-2/58031446375"
+
+    @Test("an attributed page whose query changes stays one session")
+    func noiseContinues() async {
+        let deps = FakeDependencies(rules: [makeRule(type: .urlContains, value: "record/0-2/58031446375", projectId: "acme")])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.chrome(Self.record + "?eschref=%2Fa"), now: at(0))
+        await coordinator.observe(Self.chrome(Self.record + "?eschref=%2Fb"), now: at(30))
+        await coordinator.observe(Self.chrome(Self.record + "#notes"), now: at(60))
+        await coordinator.endSession(at: at(90))
+
+        #expect(await deps.persisted.count == 1)
+        #expect(await deps.persisted.first?.durationSeconds == 90)
+    }
+
+    @Test("unassigned pages differing only in their query stay apart")
+    func unassignedStaysApart() async {
+        // A SharePoint folder lives in ?id=: these may be different clients.
+        let deps = FakeDependencies()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        let base = "https://acme.sharepoint.com/sites/X/Shared%20Documents/Forms/AllItems.aspx"
+        await coordinator.observe(Self.chrome(base + "?id=%2FClientA", title: "Docs"), now: at(0))
+        await coordinator.observe(Self.chrome(base + "?id=%2FClientB", title: "Docs"), now: at(30))
+        await coordinator.endSession(at: at(60))
+        #expect(await deps.persisted.count == 2)
+    }
+
+    @Test("a query change that a rule attributes elsewhere still splits")
+    func ruleSeesDifference() async {
+        let base = "https://acme.sharepoint.com/sites/X/AllItems.aspx"
+        let deps = FakeDependencies(rules: [
+            makeRule(type: .urlContains, value: "acme.sharepoint.com", projectId: "acme"),
+            { var r = makeRule(type: .queryParamEquals, value: "/ClientB", projectId: "internal", queryParamName: "id"); r.priority = 5; return r }(),
+        ])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.chrome(base + "?id=/ClientA", title: "Docs"), now: at(0))
+        await coordinator.observe(Self.chrome(base + "?id=/ClientB", title: "Docs"), now: at(30))
+        await coordinator.endSession(at: at(60))
+        #expect(await deps.persisted.map(\.projectId) == ["acme", "internal"])
+    }
+
+    @Test("a different page on the same site is still a new session")
+    func differentPath() async {
+        let deps = FakeDependencies(rules: [makeRule(type: .domainEquals, value: "app.hubspot.com", projectId: "acme")])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.chrome(Self.record), now: at(0))
+        await coordinator.observe(Self.chrome("https://app.hubspot.com/contacts/51325757/objects/0-2/views/all/list"), now: at(30))
+        await coordinator.endSession(at: at(60))
+        #expect(await deps.persisted.count == 2)
+    }
+
+    @Test("identity: only a changed query or fragment counts")
+    func identityRule() {
+        let a = Self.chrome(Self.record + "?x=1").identity
+        #expect(a.differsOnlyInQuery(Self.chrome(Self.record + "?x=2").identity))
+        #expect(a.differsOnlyInQuery(Self.chrome(Self.record + "#top").identity))
+        #expect(!a.differsOnlyInQuery(Self.chrome(Self.record + "?x=1").identity), "identical is not a change")
+        #expect(!a.differsOnlyInQuery(Self.chrome(Self.record + "/view?x=1").identity), "a longer path is a different page")
+        let slack = ActivitySnapshot(bundleID: "com.tinyspeck.slackmacgap", appName: "Slack", url: Self.record + "?x=2")
+        #expect(!a.differsOnlyInQuery(slack.identity), "a different app is different work")
+    }
+}

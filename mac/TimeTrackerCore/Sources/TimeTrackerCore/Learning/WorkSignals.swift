@@ -76,12 +76,27 @@ public enum WorkSignals {
         return branch
     }
 
+    /// The folder a document path puts you in.
+    ///
+    /// Usually the path is a file and the folder is its parent. But a terminal
+    /// reports its working directory, which is already the folder — marked by
+    /// a trailing slash when captured. Going up from that missed the repository
+    /// when a CLI (Claude Code, Codex) was started at its root, the usual case,
+    /// and suggested rules for the folder above the project.
+    public static func folder(ofDocument path: String) -> String {
+        if path.hasSuffix("/") {
+            let trimmed = String(path.dropLast())
+            return trimmed.isEmpty ? "/" : trimmed
+        }
+        return URL(fileURLWithPath: path).deletingLastPathComponent().path
+    }
+
     /// Walk up from a file looking for `.git`, bounded so a path outside any
     /// repository cannot walk to the filesystem root on every sample.
     static func repositoryRoot(
         for path: String, fileManager: FileManager = .default, maxDepth: Int = 12
     ) -> URL? {
-        var directory = URL(fileURLWithPath: path).deletingLastPathComponent()
+        var directory = URL(fileURLWithPath: folder(ofDocument: path), isDirectory: true)
 
         for _ in 0..<maxDepth {
             guard directory.pathComponents.count > 1 else { return nil }

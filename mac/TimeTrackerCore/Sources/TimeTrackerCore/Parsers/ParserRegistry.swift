@@ -6,9 +6,10 @@ public enum ParserRegistry {
     public static let parsers: [any URLParser] = [FigmaParser(), FramerParser(), BubbleParser(), ClaudeParser()]
 
     /// Services whose address moves as you work while the tab title stays put:
-    /// a Figma or Framer tab is titled after the file, never the screen. For
-    /// these, the only way to notice a new screen is to re-read the address.
-    public static let servicesWithLocationInURL: Set<String> = ["figma", "framer"]
+    /// a Figma, Framer or Bubble tab is titled after the file or app, never the
+    /// screen or page. For these, the only way to notice a new screen is to
+    /// re-read the address.
+    public static let servicesWithLocationInURL: Set<String> = ["figma", "framer", "bubble"]
 
     public static func locationChangesWithoutTitle(_ url: String) -> Bool {
         guard let service = parse(url)?.service else { return false }

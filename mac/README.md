@@ -135,7 +135,7 @@ Pick the feature from the popover next to the project. It is deliberately
 own project is the one being tracked. You know which feature you are on; the
 Mac does not.
 
-Four signals help it learn which feature is which. None of them *are*
+Five signals help it learn which feature is which. None of them *are*
 features — they are evidence fed to the same learning layer as everything
 else, so picking "Payments" once while on `feature/payments` is what creates
 the association:
@@ -146,8 +146,9 @@ the association:
 | Git branch | `.git/HEAD` beside the open document. Ignores main/master/develop, which name no feature |
 | Figma page | The `node-id` in a Figma URL, so one page of a file is distinguishable from another |
 | Framer screen | The `node` in a Framer editor URL, or the page path of a `*.framer.app` site |
+| Bubble page | The `name` in a Bubble editor URL — the page being edited, which is usually a feature |
 
-Figma and Framer tabs are titled after the file, never the screen, so while
+Figma, Framer and Bubble tabs are titled after the file, never the screen, so while
 one is in front the browser's address is re-read every 4 seconds rather than
 only on title changes. Moving to a screen that a rule or the learned model
 puts on a different feature starts a new session; clicking anything nothing
@@ -155,8 +156,10 @@ is known about stays in the current one, so a project visit does not
 fragment. The quickest way to teach screens is to pick the feature in the
 popover as you move between them.
 
-Git branch needs a document path, which Electron editors like VS Code do not
-expose — it works for Xcode and native editors today.
+Git branch needs a document path. Most editors expose one, VS Code included.
+Terminal reports its working folder the same way, so Claude Code or Codex run
+from a project get that project's folder and branch; other terminals are
+untested.
 
 ### Electron apps
 

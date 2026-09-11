@@ -116,7 +116,7 @@ final class ActivitySampler {
     /// Only available for apps that expose a document path at all, which rules
     /// out Electron editors like VS Code — they report a title but no document.
     private func branch(forFileAt path: String) -> String? {
-        let directory = (path as NSString).deletingLastPathComponent
+        let directory = WorkSignals.folder(ofDocument: path)
 
         // Cheap, but not free, and branches change rarely. Re-check a minute at
         // a time so switching branches is noticed without re-reading constantly.

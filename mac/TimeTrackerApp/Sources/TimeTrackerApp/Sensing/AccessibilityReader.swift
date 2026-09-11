@@ -68,10 +68,30 @@ enum AccessibilityReader {
     private static func documentPath(of window: AXUIElement) -> String? {
         guard let raw = copyString(window, kAXDocumentAttribute), !raw.isEmpty else { return nil }
 
-        if let url = URL(string: raw), url.isFileURL { return url.path }
-        // Some apps report a bare POSIX path rather than a URL.
-        if raw.hasPrefix("/") { return raw }
-        return nil
+        let path: String
+        if let url = URL(string: raw), url.isFileURL {
+            path = url.path
+        } else if raw.hasPrefix("/") {
+            // Some apps report a bare POSIX path rather than a URL.
+            path = raw
+        } else {
+            return nil
+        }
+        return markingFolders(path)
+    }
+
+    /// A trailing slash on a path that is itself a folder — a terminal's
+    /// working directory — so it is not mistaken for a file whose folder is
+    /// one level up. Packages (.xcodeproj, .app) are folders on disk but
+    /// documents to the person using them, so they stay as they are.
+    private static func markingFolders(_ path: String) -> String {
+        guard !path.hasSuffix("/") else { return path }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              isDirectory.boolValue,
+              !NSWorkspace.shared.isFilePackage(atPath: path)
+        else { return path }
+        return path + "/"
     }
 
     // ── AX plumbing ──────────────────────────────────────────────────────

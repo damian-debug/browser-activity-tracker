@@ -112,8 +112,29 @@ public actor ActivityCoordinator {
             return
         }
 
+        // Only the query or fragment changed. Usually noise, but some sites
+        // keep their identity there, so this continues only when the session
+        // is already attributed and the new address lands in exactly the same
+        // place. Unassigned pages stay apart: merged, one later decision would
+        // assign both of them.
+        if let current, current.snapshot.identity.differsOnlyInQuery(snapshot.identity),
+           await attributesTheSame(current, snapshot, now: now) {
+            self.current?.absorb(snapshot)
+            self.current?.checkpoint(at: now)
+            return
+        }
+
         await endSession(at: now)
         await startSession(snapshot, now: now)
+    }
+
+    private func attributesTheSame(
+        _ current: ActiveSession, _ snapshot: ActivitySnapshot, now: Date
+    ) async -> Bool {
+        guard let project = current.assignment.projectId else { return false }
+        let override = await dependencies.currentOverride()
+        let (next, _) = await attribute(snapshot, override: override, now: now)
+        return next.projectId == project && next.featureId == current.assignment.featureId
     }
 
     private func startSession(_ snapshot: ActivitySnapshot, now: Date) async {

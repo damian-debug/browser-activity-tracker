@@ -63,6 +63,21 @@ struct GitBranchTests {
         return root
     }
 
+    @Test("a terminal at the repository root finds the branch — Claude Code, Codex")
+    func terminalAtRoot() throws {
+        let repo = try makeRepo(branch: "feature/payment-integration")
+        defer { try? FileManager.default.removeItem(at: repo) }
+        // A working directory arrives marked as a folder, with a trailing slash.
+        #expect(WorkSignals.gitBranch(forFileAt: repo.path + "/") == "feature/payment-integration")
+    }
+
+    @Test("a terminal in a subfolder of the repository finds it too")
+    func terminalInSubfolder() throws {
+        let repo = try makeRepo(branch: "feature/payment-integration")
+        defer { try? FileManager.default.removeItem(at: repo) }
+        #expect(WorkSignals.gitBranch(forFileAt: repo.appendingPathComponent("src").path + "/") == "feature/payment-integration")
+    }
+
     @Test("reads the checked-out branch from a file inside the repository")
     func readsBranch() throws {
         let repo = try makeRepo(branch: "feature/payment-integration")
@@ -254,5 +269,38 @@ struct ClaudeParserTests {
         // The app's own name must not become a title token, or every
         // conversation would share it.
         #expect(!keys.contains("title:claude"))
+    }
+}
+
+
+@Suite("The folder a document puts you in")
+struct DocumentFolderTests {
+    @Test("a file's folder is its parent")
+    func file() {
+        #expect(WorkSignals.folder(ofDocument: "/Users/me/Projects/acme/src/App.swift") == "/Users/me/Projects/acme/src")
+    }
+
+    @Test("a folder — a terminal's working directory — is itself")
+    func folder() {
+        #expect(WorkSignals.folder(ofDocument: "/Users/me/Projects/acme/") == "/Users/me/Projects/acme")
+        #expect(WorkSignals.folder(ofDocument: "/") == "/")
+    }
+
+    @Test("a terminal at a project root is offered that project, not the folder above")
+    func suggestion() {
+        let session = Session(
+            appBundleID: "com.apple.Terminal", appName: "Terminal",
+            windowTitle: "damianreid — claude — 120×30", documentPath: "/Users/me/Projects/acme/",
+            startTime: Date(), endTime: Date(), durationSeconds: 60
+        )
+        let folder = RuleSuggester.suggestions(for: session).first { $0.type == .documentPathContains }
+        #expect(folder?.label == "Anything in acme")
+        #expect(folder?.value == "/Users/me/Projects/acme/")
+    }
+
+    @Test("its learning clues start at the project, not above it")
+    func features() {
+        let values = FeatureExtractor.documentFeatures("/Users/me/Projects/acme/").map(\.value)
+        #expect(values.first == "/Users/me/Projects/acme")
     }
 }

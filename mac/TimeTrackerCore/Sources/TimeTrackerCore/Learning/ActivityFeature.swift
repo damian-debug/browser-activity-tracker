@@ -199,9 +199,8 @@ public enum FeatureExtractor {
     /// a project lives at. So we record the enclosing directories rather than
     /// the file, at up to three depths.
     static func documentFeatures(_ path: String) -> [ActivityFeature] {
-        let url = URL(fileURLWithPath: path)
         var directories: [String] = []
-        var current = url.deletingLastPathComponent()
+        var current = URL(fileURLWithPath: WorkSignals.folder(ofDocument: path), isDirectory: true)
 
         while directories.count < 3, current.pathComponents.count > 2 {
             directories.append(current.path)

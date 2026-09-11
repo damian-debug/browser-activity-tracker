@@ -12,10 +12,16 @@ public struct BubbleParser: URLParser {
               let host = components.host
         else { return nil }
 
-        // Editor
+        // Editor. `name` is the page being edited — and pages are usually
+        // features ("gp-portal", "checkout"). The title never names the page,
+        // so without this there was no way to tell one from another.
         if host == "bubble.io" && components.path.hasPrefix("/page") {
             guard let appId = URLish.queryValue(url, name: "id"), !appId.isEmpty else { return nil }
-            return ParsedEntity(service: "bubble", entityId: appId, entityName: nil)
+            let page = URLish.queryValue(url, name: "name")
+            return ParsedEntity(
+                service: "bubble", entityId: appId, entityName: nil,
+                subEntityId: page?.isEmpty == false ? page : nil
+            )
         }
 
         // Published / test app

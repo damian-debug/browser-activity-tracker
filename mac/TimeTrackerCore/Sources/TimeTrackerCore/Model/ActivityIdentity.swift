@@ -57,6 +57,28 @@ public struct ActivityIdentity: Hashable, Sendable, Codable {
         // Nothing comparable beyond the app itself: same app, same session.
         return true
     }
+
+    /// Whether `other` is the same page with only its query or fragment
+    /// changed — `?eschref=` on a HubSpot record, `?gid=` on a sheet tab,
+    /// `#heading` in a doc — and nothing stronger says it is different work.
+    ///
+    /// Deliberately not part of `continues`: some sites keep their identity in
+    /// the query (a SharePoint folder in `?id=`, a search in `?q=`), so whether
+    /// this is really the same work is for attribution to decide.
+    public func differsOnlyInQuery(_ other: ActivityIdentity) -> Bool {
+        guard bundleID == other.bundleID,
+              let a = url, let b = other.url, a != b,
+              Self.withoutQuery(a) == Self.withoutQuery(b)
+        else { return false }
+        if let x = entityKey, let y = other.entityKey, x != y { return false }
+        if let x = documentPath, let y = other.documentPath, x != y { return false }
+        return true
+    }
+
+    static func withoutQuery(_ url: String) -> String {
+        guard let cut = url.firstIndex(where: { $0 == "?" || $0 == "#" }) else { return url }
+        return String(url[..<cut])
+    }
 }
 
 public extension ActivitySnapshot {
