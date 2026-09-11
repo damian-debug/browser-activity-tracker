@@ -20,6 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = semaphore.wait(timeout: .now() + 2)
     }
 
+    /// Opening the app while it is already running. A menu bar app has no
+    /// window to bring forward, so this used to do nothing — the one thing
+    /// people try when they cannot find the icon.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        statusController?.reopen()
+        return false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Agent app: no Dock icon, no app menu. The menu bar item is the app.
         NSApp.setActivationPolicy(.accessory)
@@ -56,6 +64,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // before NSApplication starts, so no menu bar item or tracking ever spins up.
 if CommandLine.arguments.contains("--unregister-login-item") {
     exit(LaunchAtLogin.unregisterForUninstall() ? 0 : 1)
+}
+
+// Support diagnostic: `TimeTrackerApp --diagnose-menu-bar [extra] [seconds]`
+// shows the icon and reports whether macOS really placed it on screen.
+// `extra` adds that many dummy icons, to reproduce a full menu bar; `seconds`
+// keeps them up that long (default 3).
+if let flag = CommandLine.arguments.firstIndex(of: "--diagnose-menu-bar") {
+    let rest = CommandLine.arguments.dropFirst(flag + 1).compactMap(Int.init)
+    MenuBarDiagnostic.run(extraItems: rest.first ?? 0, seconds: rest.dropFirst().first ?? 3)
 }
 
 let delegate = AppDelegate()

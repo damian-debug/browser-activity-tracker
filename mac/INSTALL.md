@@ -16,6 +16,36 @@ rules and permissions all survive.
 
 Works on Apple Silicon and Intel, macOS 14 and later.
 
+### Can't see the timer in the menu bar?
+
+It is almost certainly running — macOS just has nowhere to put the icon. When
+the menu bar is full, macOS hides new icons without saying so, and on a MacBook
+with a notch there is not much room to begin with. The newest app's icon is the
+first to go.
+
+Activity Tracker checks where its icon actually landed. If it is hidden, the
+app opens its own window with everything the menu bar would have shown, and
+you can bring that window back at any time by **opening Activity Tracker from
+Spotlight** (⌘-Space, type "Activity").
+
+To get the icon back:
+
+- **System Settings → Menu Bar → Allow in the Menu Bar**: switch off an app or
+  two you don't need up there — and check Activity Tracker is switched on.
+- Or quit a menu bar app you're not using.
+- On an external display the menu bar has much more room; the icon usually
+  shows there even when it doesn't on the laptop screen.
+
+For support, this shows where macOS put the icon each time the app started
+(`visible`, `behindNotch` or `offScreen`) — only the icon's position, nothing
+about what is being tracked:
+
+```bash
+/usr/bin/log show --last 1d --style compact --predicate 'subsystem == "studio.goodspeed.timetracker"'
+```
+
+(The full path matters: in zsh, a bare `log` is a different, built-in command.)
+
 ### After installing
 
 The app asks for **Accessibility** permission

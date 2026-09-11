@@ -95,6 +95,13 @@ else
     printf '\033[32mInstalled %s.\033[0m Look for the timer in your menu bar.\n' "$VERSION"
     cat <<'NOTE'
 
+Can't see it? Your menu bar is probably full — macOS silently hides new icons
+when there is no room, especially on MacBooks with a notch. Activity Tracker
+notices and opens its own window instead, and you can bring that window back
+any time by opening Activity Tracker from Spotlight.
+NOTE
+    cat <<'NOTE'
+
 One thing left to do: the app is asking for Accessibility permission now.
 Without it, it can only see which app you are in — with it, it can also see
 window titles and open files, which is what makes attribution to a project work.
