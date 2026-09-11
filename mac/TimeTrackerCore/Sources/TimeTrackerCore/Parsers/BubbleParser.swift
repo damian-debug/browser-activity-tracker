@@ -20,7 +20,8 @@ public struct BubbleParser: URLParser {
             let page = URLish.queryValue(url, name: "name")
             return ParsedEntity(
                 service: "bubble", entityId: appId, entityName: nil,
-                subEntityId: page?.isEmpty == false ? page : nil
+                subEntityId: page?.isEmpty == false ? page : nil,
+                subEntityIsPage: true
             )
         }
 

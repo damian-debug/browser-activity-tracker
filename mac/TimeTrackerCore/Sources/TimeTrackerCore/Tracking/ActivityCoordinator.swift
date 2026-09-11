@@ -167,6 +167,17 @@ public actor ActivityCoordinator {
         let (next, _) = await attribute(snapshot, override: override, now: now)
         if let project = next.projectId, project != current.assignment.projectId { return true }
         if let feature = next.featureId, feature != current.assignment.featureId { return true }
+
+        // Moving to a page with no feature of its own. A real page's feature
+        // does not follow you onto the next page — without this, time on every
+        // other page of a Bubble app counted towards the last feature visited.
+        // A selection is different: clicking an element nothing is known about
+        // is still the work in progress. (A feature picked in the popover never
+        // gets here: it applies to every page, so `next` carries it too.)
+        if next.featureId == nil, current.assignment.featureId != nil,
+           snapshot.parsed?.subEntityIsPage == true {
+            return true
+        }
         return false
     }
 

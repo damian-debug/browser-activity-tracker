@@ -57,3 +57,70 @@ struct BubblePageTests {
         #expect(keys.contains("place:bubble::meltx#gp-portal"))
     }
 }
+
+@Suite("Leaving a Bubble page")
+struct LeavingPageTests {
+    static func page(_ name: String) -> ActivitySnapshot {
+        ActivitySnapshot(bundleID: "com.google.Chrome", appName: "Google Chrome",
+                         windowTitle: "meltx | Bubble Editor",
+                         url: "https://bubble.io/page?id=meltx&tab=Design&name=\(name)")
+    }
+
+    func deps() -> FakeDependencies {
+        var gp = ProjectRule(id: "gp", projectId: "meltx", featureId: "gp-portal", name: "GP Portal",
+                             conditions: [RuleCondition(type: .queryParamEquals, value: "meltx", queryParamName: "id"),
+                                          RuleCondition(type: .queryParamEquals, value: "gp-portal", queryParamName: "name")])
+        gp.priority = 1
+        let app = ProjectRule(id: "app", projectId: "meltx", name: "MeltX",
+                              conditions: [RuleCondition(type: .queryParamEquals, value: "meltx", queryParamName: "id")])
+        return FakeDependencies(rules: [gp, app], projects: [
+            Project(id: "meltx", name: "MeltX"), Project(id: "gp-portal", name: "GP Portal", parentId: "meltx"),
+        ])
+    }
+
+    @Test("moving from the GP Portal page to another page stops counting GP Portal")
+    func leavesFeatureBehind() async {
+        let deps = deps()
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.page("gp-portal"), now: Date(timeIntervalSince1970: 0))
+        await coordinator.observe(Self.page("admin"), now: Date(timeIntervalSince1970: 60))
+        await coordinator.endSession(at: Date(timeIntervalSince1970: 100))
+
+        let sessions = await deps.persisted
+        #expect(sessions.map(\.featureId) == ["gp-portal", nil])
+        #expect(sessions.map(\.projectId) == ["meltx", "meltx"])
+        #expect(sessions.map(\.durationSeconds) == [60, 40])
+    }
+
+    @Test("a feature picked in the popover still spans every page")
+    func chosenFeatureSpansPages() async {
+        let deps = deps()
+        await deps.choose(feature: (id: "gp-portal", projectId: "meltx", name: "GP Portal"))
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        await coordinator.observe(Self.page("gp-portal"), now: Date(timeIntervalSince1970: 0))
+        await coordinator.observe(Self.page("admin"), now: Date(timeIntervalSince1970: 60))
+        await coordinator.endSession(at: Date(timeIntervalSince1970: 100))
+        #expect(await deps.persisted.map(\.featureId) == ["gp-portal"])
+    }
+
+    @Test("pages of an app with no features at all stay one session")
+    func noFeaturesNoSplits() async {
+        let deps = FakeDependencies(rules: [
+            ProjectRule(id: "app", projectId: "meltx", name: "MeltX",
+                        conditions: [RuleCondition(type: .queryParamEquals, value: "meltx", queryParamName: "id")]),
+        ])
+        let coordinator = ActivityCoordinator(dependencies: deps)
+        for (i, name) in ["setup", "admin", "gp-portal"].enumerated() {
+            await coordinator.observe(Self.page(name), now: Date(timeIntervalSince1970: Double(i * 30)))
+        }
+        await coordinator.endSession(at: Date(timeIntervalSince1970: 90))
+        #expect(await deps.persisted.count == 1)
+    }
+
+    @Test("a Framer selection is not a page, so clicking away keeps the feature")
+    func framerSelectionIsNotAPage() throws {
+        #expect(try #require(ParserRegistry.parse("https://framer.com/projects/A--FC91PjIN9PCSOTMJzDXU?node=X")).subEntityIsPage == false)
+        #expect(try #require(ParserRegistry.parse("https://acme.framer.app/pricing")).subEntityIsPage == true)
+        #expect(try #require(ParserRegistry.parse("https://bubble.io/page?id=meltx&name=admin")).subEntityIsPage == true)
+    }
+}

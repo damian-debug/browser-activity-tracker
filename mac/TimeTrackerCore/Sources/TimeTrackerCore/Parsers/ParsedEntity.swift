@@ -12,14 +12,21 @@ public struct ParsedEntity: Hashable, Sendable {
     /// one file, so it is evidence about which feature is being worked on.
     public let subEntityId: String?
 
+    /// Whether the location is a real page (a Bubble page, a page of a site)
+    /// rather than just the current selection (a Framer node, a Figma frame).
+    /// Leaving a page leaves its feature behind; changing selection does not.
+    public let subEntityIsPage: Bool
+
     public init(
         service: String, entityId: String,
-        entityName: String? = nil, subEntityId: String? = nil
+        entityName: String? = nil, subEntityId: String? = nil,
+        subEntityIsPage: Bool = false
     ) {
         self.service = service
         self.entityId = entityId
         self.entityName = entityName
         self.subEntityId = subEntityId
+        self.subEntityIsPage = subEntityIsPage
     }
 }
 

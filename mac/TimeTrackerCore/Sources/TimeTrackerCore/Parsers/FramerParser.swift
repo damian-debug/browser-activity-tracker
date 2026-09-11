@@ -32,7 +32,7 @@ public struct FramerParser: URLParser {
             let page = components.path.isEmpty ? "/" : components.path
             return ParsedEntity(
                 service: "framer", entityId: site, entityName: site,
-                subEntityId: page
+                subEntityId: page, subEntityIsPage: true
             )
         }
         return nil
